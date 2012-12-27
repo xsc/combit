@@ -1,121 +1,35 @@
-(ns ^{ :doc "Data Representation for Combit."
+(ns ^{ :doc "Combit Data"
        :author "Yannick Scherer" }
   combit.data)
 
-;; ## Block of Bits
+;; ## CombitData Protocol
 
-(declare set-width)
+(defprotocol CombitData
+  "Protocol for all data processable by Combit."
+  (set-at         [this index value] "Set the element at the given position to the given value.")
+  (get-at         [this index] "Get the element at the given position.")
+  (element-count  [this] "Get the number of elements."))
 
-(defn create-block
-  "Create new block of the given width."
-  ([width]
-   (-> {}
-     (assoc :width width)
-     (assoc :data (vec (map (constantly 0) (range width))))))
-  ([data width]
-   (-> {}
-     (assoc :width (count data))
-     (assoc :data (vec data))
-     (set-width width))))
+;; ## Built-In Implementations
 
-(defn block-width
-  "Get width of block."
-  [{:keys[width]}]
-  width)
-
-(defn block-data
-  "Get data of block."
-  [{:keys[data]}]
-  data)
-
-(defn get-bits
-  "Get a new block consisting of the given bits, 0 being the LSB."
-  [{:keys[width data]} vector-of-bits]
-  (let [data (map
-               (fn [n]
-                 (if (< n width)
-                   (nth data (- width n 1))
-                   0))
-               vector-of-bits)]
-    (create-block data (count vector-of-bits))))
-
-(defn get-bit
-  "Get nth bit of the block, 0 being the LSB."
-  [block n]
-  (get-bits block [n]))
-
-(defn set-bit
-  "Set nth bit of the block, 0 being the LSB. Everything that does not
-   evaluate to 0 or to false/nil will be treated as 1."
-  [{:keys[width data] :as block} n x]
-  (if (< n width)
-    (assoc-in block [:data (- width n 1)]
-              (if (or (= x 0) (not x))
-                0
-                1))
-    block))
-
-(defn set-width
-  [{:keys[width data] :as block} w]
-  (if-not w
-    block
-    (let [width (or width (count data))]
-      (-> block
-        (assoc :width w)
-        (assoc :data
-               (cond (< width w) (vec (concat 
-                                        (take (- w width) (repeatedly (constantly 0)))
-                                        data))
-                     (> width w) (vec (drop (- width w) data))
-                     :else data))))))
-
-;; ## Block from Data
-
-(defprotocol Block
-  "Protocol for Types that can be converte to Blocks."
-  (data->block* [data] "Convert data to block."))
-
-(extend-protocol Block
-
+(extend-protocol CombitData
+  
   clojure.lang.IPersistentVector
-  (data->block* [v]
-    (let [data (vec
-                 (map (fn [x]
-                        (if (or (= x 0) (not x))
-                          0
-                          1))
-                      v))]
-      (create-block data (count data))))
+  (set-at [this index value]
+    (assoc this index value))
+  (get-at [this index]
+    (get this index))
+  (element-count [this]
+    (count this))
 
-  clojure.lang.IPersistentMap
-  (data->block* [{:keys[width data]}]
-    (create-block (or data []) (or width 0)))
+  clojure.lang.ISeq
+  (set-at [this index value]
+    (concat
+      (take (dec index) this)
+      [value]
+      (drop (inc index) this)))
+  (get-at [this index]
+    (nth this index))
+  (element-count [this]
+    (count this)))
 
-  java.lang.Integer
-  (data->block* [n]
-    (let [data (vec
-                 (loop [n n
-                        block []]
-                   (case n
-                     0 (cons 0 block)
-                     1 (cons 1 block)
-                     (recur (quot n 2) (cons (rem n 2) block)))))]
-      (create-block data (count data))))
-
-  java.lang.Long
-  (data->block* [n]
-    (let [data (vec
-                 (loop [n n
-                        block []]
-                   (case n
-                     0 (cons 0 block)
-                     1 (cons 1 block)
-                     (recur (quot n 2) (cons (rem n 2) block)))))]
-      (create-block data (count data)))))
-
-(defn data->block
-  ([data] (data->block data nil))
-  ([data width]
-   (-> 
-     (data->block* data)
-     (set-width width))))

@@ -1,200 +1,168 @@
 (ns ^ { :doc "Combit Components"
         :author "Yannick Scherer" }
   combit.core
-  (:use combit.data))
+  (:use [combit.utils :as u]
+        [combit.data :as data]))
 
-;; A Combit component has a number of fixed-size inputs and outputs.
-;; The outputs of a component can be connected to the inputs of another one.
-;; Data can be accessed by single bits or chunks of bits.
-
-;; ## Get Input/Set Output 
-
-;; ### Helpers
-
-(defn- get-nth-block
-  "Ge the nth block from a series of blocks."
-  [n blocks]
-  (nth blocks n))
-
-(defn- wrap-with-range
-  "Wrap the given function (one of `input` or `output`, see below) with the possibility to
-   specify two parameters in place of the last one: an upper and lower bound which will be 
-   passed as a `range` seq to the given function.
-  
-   Additionally, if the last parameter if omitted, it will be given as `(range width)`."
-  [f]
-  (fn
-    ([n width] (f n width (range width)))
-    ([n width spec] (f n width spec))
-    ([n width lower upper]
-     (if (and (integer? lower) (integer? upper))
-       (->>
-         (if (>= upper lower)
-           (range lower (inc upper))
-           (range upper (dec lower) -1))
-         (f n width))))))
-
-;; ### Combit Input Selector
+;; ## Combit
 ;;
-;; A combit input selector is a function that takes a series of n input blocks,
-;; and returns a vector of bits.
-
-(defn- new-input-function
-  "Create new input function. The specification can be:
-   - an integer: get the nth bit.
-   - a vector: get the given bits."
-  [width spec]
-  (cond (integer? spec) (recur width (vector spec))
-        (coll? spec) (fn [block]
-                       (-> block
-                         (set-width width)
-                         (get-bits spec)))
-        :else (constantly nil)))
-
-(def input
-  "Create input selector function. The resulting function will take all available
-   input blocks and return the selected bits."
-  (wrap-with-range
-    (fn [n width spec]
-      (let [get-input-bits (new-input-function width spec)
-            select-input-block (partial get-nth-block n)]
-        (fn [inputs]
-          (get-input-bits
-            (select-input-block inputs)))))))
-
-;; ### Combit Output Setter
+;; Combit provides intuitive handling of fixed-size sequences. Its main parts
+;; are _components_ that take a series of input sequences and produce a series
+;; of output sequences.
 ;;
-;; A combit output setter is a function that takes a series of n current output blocks 
-;; and a block of data, and produces n new output blocks.
-
-(defn- new-output-function
-  "Create new output function. The specification can be:
-   - an integer: set the nth bit to the given value
-   - a vector: set the given bits in order."
-  [width spec]
-  (cond (integer? spec) (recur width (vector spec))
-        (coll? spec) (fn [block new-data-block]
-                       (if-let [data (block-data new-data-block)]
-                         (reduce
-                           (fn [block [n value]]
-                             (when (< n width)
-                               (set-bit block n value)))
-                           (set-width block width)
-                           (map vector spec data))
-                         block))
-        :else (fn [block _] block)))
-
-(def output
-  "Create output setter function. The resulting function will take the current state
-   of output blocks and return new outputs according to the given data."
-  (wrap-with-range
-    (fn [n width spec]
-      (let [set-output-bits (new-output-function width spec)
-            select-output-block (partial get-nth-block n)]
-        (fn [outputs data]
-          (if-let [output-block (set-output-bits
-                                  (select-output-block outputs)
-                                  data)]
-            (assoc (vec outputs) n output-block)
-            outputs))))))
-
-;; ### Connector
+;; It aims at providing a concise description of the operations performed on such 
+;; sequences.
 ;;
-;; The `>>` function connects an input selector to an output setter. The resulting
-;; function takes a series of input blocks and a series of current output blocks
-;; and produces a new set of output blocks.
+;; ### Components
+;;
+;; A Combit component takes a seq of input data and produces a tupel containing the 
+;; given inputs, as well as a seq of output data.
+;;
+;;    (component [a 32] [b 16 c 16] ...)
+;;    ; =>
+;;    (fn [[a-in & _] & _] 
+;;      (vector [a-in] ...))
+;;
+;; Combit components consist of sets of output manipulation functions, taking the inputs
+;; and the current state of the outputs as parameters and producing a tupel of inputs destined
+;; for a subsequent processing function, as well as the seq of newly-generated outputs.
+;; These transformation functions are applied in the order they are given.
 
-(defn >>
-  [get-input & processors]
-  (let [processor-count (count processors)
-        output-setters (let [o (last processors)]
-                         (if (coll? o) o (vector o)))
-        processors (take (dec processor-count) processors)
-        process-fn (apply comp identity (reverse processors))]
-    (fn [inputs outputs]
-      (let [initial-inputs (if (coll? get-input)
-                             (map (fn [f] (f inputs)) get-input) 
-                             (vector (get-input inputs)))
-            final-inputs (process-fn initial-inputs)]
-        (reduce
-          (fn [outputs [setter input]]
-            (setter outputs input))
-          outputs
-          (map vector output-setters final-inputs))))))
+(declare input output)
 
-;; ### Component Macro
-;;
-;; The `component` macro declares a function with a certain number of input and
-;; output blocks. These blocks have a fixed width. The body of the macro may contain
-;; an unlimited series of functions taking the given input blocks and the current state
-;; of output blocks as parameters and producing a fresh set of output blocks.
-;;
-;; For example, to swap the two halves of a 32-bit block, you could create the 
-;; following function:
-;;
-;;     (def swapper
-;;       (component [in 32] [out 32]
-;;         (>> (in 0 15) (out 16 31))
-;;         (>> (in 16 31) (out 0 15))))
+(defn- normalize-specs
+  "Convert a seq of `[symbol block-spec symbol block-spec ...]` to a seq of
+   `[[symbol normalized-spec] [symbol-normalized-spec]]` pairs."
+  [specs]
+  (map
+    (fn [[sym spec]]
+      (vector
+        sym
+        (cond (and (integer? spec) (pos? spec)) (-> {} (assoc :width spec))
+              (and (map? spec) (contains? spec :width)) spec
+              :else (throw (Exception. (str "Unknown Input/Output specification: " spec))))))
+    (partition 2 specs)))
+
+(defn- create-component-let-bindings
+  [f pairs]
+  (apply concat
+         (map-indexed
+           (fn [index [sym spec]]
+             `[~sym (~f ~index ~(:width spec))])
+           pairs)))
+
+(defn run-component-transformations
+  "Run the given transformations on the given input and output
+   sequences."
+  [inputs outputs transformations]
+  (reduce
+    (fn [[_ o] transform]
+      (transform inputs o))
+    [inputs outputs]
+    transformations))
 
 (defmacro component
-  [inputs outputs & body]
-  (let [input-pairs (partition 2 inputs)
-        output-pairs (partition 2 outputs)]
-    `(let [~@(apply concat
-               (map-indexed (fn [i [sym width]]
-                              `[~sym (partial input ~i ~width)])
-                            input-pairs))
-           ~@(apply concat
-               (map-indexed (fn [i [sym width]]
-                              `[~sym (partial output ~i ~width)])
-                            output-pairs))]
-       (let [component-fn# (reduce
-                             (fn [inner-fn# f#]
-                               (fn [inputs#]
-                                 (f# inputs# (inner-fn# inputs#))))
-                             (constantly
-                               (vector ~@(map (fn [[_ width]] 
-                                                `(create-block ~width)) 
-                                              output-pairs)))
-                             ~(vec body))]
-         (fn [inputs#]
-           (->> inputs#
-             (map data->block)
-             (component-fn#)))))))
+  "Create new component."
+  [inputs outputs & transformations]
+  (let [input-pairs (normalize-specs inputs)
+        output-pairs (normalize-specs outputs)
+        input-count (count input-pairs)
+        output-count (count output-pairs)]
+    `(let [~@(concat
+               (create-component-let-bindings `input input-pairs)
+               (create-component-let-bindings `output output-pairs))]
+       (fn [i# & _#]
+         (let [in#  (vec (take ~input-count i#))
+               out# ~(vec (map (fn [[_ spec]]
+                                 `(u/new-vector ~(:width spec))) 
+                               output-pairs))
+               [_# out#] (run-component-transformations in# out# ~(vec transformations))
+               out# (vec (take ~output-count out#))]
+           (vector in# out#))))))
 
-;; ## Utilities
+;; ### Combinations
+;;
+;; The `>>` function combines transformations by supplying the output part emitted by a 
+;; transformation as input to the subsequent one.
+;;
+;;    (>> A B C) ;=> (>> (>> A B) C)
+;;    (>> A B) ;=> (fn [i o] (B (second (A i o)) o))
 
-(defn split>>
-  "Create new output setter function that delivers the same input to multiple output
-   setters."
-  [& fs]
-  (if (seq fs)
-    (fn [outputs data]
-      (reduce
-        (fn [outputs f]
-          (f outputs data))
-        outputs
-        fs))
-    (throw (Exception. "split>> needs at least one output setter."))))
+(defn >>
+  "Combine a number of transformation functions into a new one, passing outputs from one
+   transformation as inputs to the subsequent one."
+  [& transformations]
+  (reduce
+    (fn [t1 t2]
+      (fn [inputs outputs]
+        (let [o (cond (fn? t1) (second (t1 inputs outputs))
+                      (coll? t1) (map (fn [t] (t inputs outputs)) t1)
+                      :else (throw (Exception. (str "Not a valid transformation: " t1))))
+              o  (second (t2 o outputs))]
+          (vector inputs o))))
+    transformations))
 
-(defmacro join>>
-  "Create component that joins a series of inputs of the given widths into
-   a single output."
-  [& widths]
-  (let [total-width (reduce + widths)
-        inputs (map vector (repeatedly gensym) widths)
-        output (gensym)]
-    `(component [~@(flatten inputs)] [~output ~total-width]
-       ~@(->
-           (reduce 
-             (fn [[pos fns] [input width]]
-               (let [next-pos (+ pos width)]
-                 (vector next-pos
-                         (cons
-                           `(>> (~input 0 ~(dec width))
-                                (~output ~pos ~(dec next-pos)))
-                           fns))))
-             [0 []]
-             (reverse inputs))
-           second))))
+;; ### Input Getter / Output Setter
+
+(declare input-getter output-setter)
+
+(defn- wrap-with-range
+  "Wrap a function that expects a single parameter (a range specification) with the possibility to
+   not specify a range at all (= \"use full range\") or to specify it as lower and upper bounds."
+  [f width]
+  (fn 
+    ([] (f (range width)))
+    ([spec] (f spec))
+    ([lower upper]
+     (if (and (integer? lower) (integer? upper))
+       (f
+         (if (>= upper lower)
+           (range lower (inc upper))
+           (reverse (range upper (inc lower)))))
+       (throw (Exception. (str "Invalid lower/upper bound: " lower " -> " upper)))))))
+
+(defn input
+  "Create function that, when supplied with an input selector specification (i.e. the indices
+   of elements to extract from a sequence, produces an input getter function."
+  [index width]
+  (->
+    (fn [spec]
+      (let [f (input-getter width spec)]
+        (fn [inputs outputs]
+          (let [input (nth inputs index)]
+            [inputs [(f input)]]))))
+    (wrap-with-range width)))
+
+(defn output
+  "Create function that, when supplied with an output selector specification (i.e. the indices
+   of elements to replace in a sequence, produces an output setter function."
+  [index width]
+  (-> 
+    (fn [spec]
+      (prn spec)
+      (let [f (output-setter width spec)]
+        (fn [inputs outputs]
+          (let [output (nth outputs index)
+                outputs (concat
+                          (take (dec index) outputs)
+                          [(f inputs output)]
+                          (drop (inc index) outputs))]
+            (vector inputs outputs)))))
+    (wrap-with-range width)))
+
+(defn- input-getter
+  [width elements-to-get]
+  (fn [data]
+    (map
+      (fn [index]
+        (data/get-at data index))
+      elements-to-get)))
+
+(defn- output-setter
+  [width elements-to-set]
+  (fn [[data & _] output]
+    (reduce
+      (fn [output [src-index dest-index]]
+        (data/set-at output dest-index (data/get-at data src-index)))
+      (vec output)
+      (map vector (range) elements-to-set))))
