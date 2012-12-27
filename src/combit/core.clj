@@ -96,9 +96,15 @@
     (fn [t1 t2]
       (fn [inputs outputs]
         (let [o (cond (fn? t1) (second (t1 inputs outputs))
-                      (coll? t1) (map (fn [t] (t inputs outputs)) t1)
+                      (coll? t1) (map (fn [t] (second (t inputs outputs))) t1)
                       :else (throw (Exception. (str "Not a valid transformation: " t1))))
-              o  (second (t2 o outputs))]
+              o (cond (fn? t2) (second (t2 o outputs))
+                      (coll? t2) (reduce
+                                   (fn [outputs [tx ox]]
+                                     (second (tx [ox] outputs)))
+                                   outputs
+                                   (map vector t2 o))
+                      :else (throw (Exception. (str "Not a valid transformation: " t2))))]
           (vector inputs o))))
     transformations))
 
