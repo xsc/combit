@@ -112,7 +112,9 @@
   [f width]
   (fn 
     ([] (f (range width)))
-    ([spec] (f spec))
+    ([spec] (if (coll? spec)
+              (f spec)
+              (f (vector spec))))
     ([lower upper]
      (if (and (integer? lower) (integer? upper))
        (f
