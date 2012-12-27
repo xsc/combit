@@ -141,7 +141,6 @@
   [index width]
   (-> 
     (fn [spec]
-      (prn spec)
       (let [f (output-setter width spec)]
         (fn [inputs outputs]
           (let [output (nth outputs index)
