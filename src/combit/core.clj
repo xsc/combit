@@ -145,7 +145,7 @@
         (fn [inputs outputs]
           (let [output (nth outputs index)
                 outputs (concat
-                          (take (dec index) outputs)
+                          (take index outputs)
                           [(f inputs output)]
                           (drop (inc index) outputs))]
             (vector inputs outputs)))))
