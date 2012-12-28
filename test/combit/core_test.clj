@@ -8,25 +8,25 @@
           in1 (input 1 2)
           dta [[1 2 3 4] [5 6]]]
 
-      (is (= ((in0) dta nil) [dta [(first dta)]]))
-      (is (= ((in1) dta nil) [dta [(second dta)]]))
+      (is (= ((in0) dta nil) [(first dta)]))
+      (is (= ((in1) dta nil) [(second dta)]))
 
-      (are [spec r] (= ((in0 spec) dta nil) [dta [r]])
+      (are [spec r] (= ((in0 spec) dta nil) [r])
            0 [1] 1 [2] 2 [3] 3 [4]
            [0 2] [1 3]
            [1 3] [2 4]
            [3 1] [4 2])
-      (are [spec r] (= ((in1 spec) dta nil) [dta [r]])
+      (are [spec r] (= ((in1 spec) dta nil) [r])
            0 [5] 1 [6]
            [0 1] [5 6]
            [1 0] [6 5])
 
-      (are [l u r] (= ((in0 l u) dta nil) [dta [r]])
+      (are [l u r] (= ((in0 l u) dta nil) [r])
            0 3 (first dta)
            3 0 (reverse (first dta))
            1 3 [2 3 4]
            2 1 [3 2])
-      (are [l u r] (= ((in1 l u) dta nil) [dta [r]])
+      (are [l u r] (= ((in1 l u) dta nil) [r])
            0 1 (second dta)
            1 0 (reverse (second dta))))))
 
@@ -37,10 +37,10 @@
           dta0 [[1 2 3 4]]
           dta1 [[5 6]]
           odta [[0 0 0 0] [0 0]]]
-      (is (= ((out0) dta0 odta) [dta0 [(first dta0) (second odta)]]))
-      (is (= ((out1) dta1 odta) [dta1 [(first odta) (first dta1)]]))
+      (is (= ((out0) dta0 odta) [(first dta0) (second odta)]))
+      (is (= ((out1) dta1 odta) [(first odta) (first dta1)]))
 
-      (are [spec r] (= ((out0 spec) dta0 odta) [dta0 [r (second odta)]])
+      (are [spec r] (= ((out0 spec) dta0 odta) [r (second odta)])
            0 [1 0 0 0]
            1 [0 1 0 0]
            2 [0 0 1 0]
@@ -48,18 +48,18 @@
            [0 2] [1 0 2 0]
            [1 3] [0 1 0 2]
            [3 1] [0 2 0 1])
-      (are [spec r] (= ((out1 spec) dta1 odta) [dta1 [(first odta) r]])
+      (are [spec r] (= ((out1 spec) dta1 odta) [(first odta) r])
            0 [5 0]
            1 [0 5]
            [0 1] [5 6]
            [1 0] [6 5])
 
-      (are [l u r] (= ((out0 l u) dta0 odta) [dta0 [r (second odta)]])
+      (are [l u r] (= ((out0 l u) dta0 odta) [r (second odta)])
            0 3 (first dta0)
            3 0 (reverse (first dta0))
            1 3 [0 1 2 3]
            2 1 [0 2 1 0])
-      (are [l u r] (= ((out1 l u) dta1 odta) [dta1 [(first odta) r]])
+      (are [l u r] (= ((out1 l u) dta1 odta) [(first odta) r])
            0 1 (first dta1)
            1 0 (reverse (first dta1))))))
 
@@ -71,10 +71,10 @@
           out1 (output 1 2)
           dta [[1 2 3 4] [5 6]]
           odta [[0 0 0 0] [0 0]]]
-      (is (= ((>> (in0) (out0)) dta odta) [dta [(first dta) (second odta)]]))
-      (is (= ((>> (in1) (out1)) dta odta) [dta [(first odta) (second dta)]]))
+      (is (= ((>> (in0) (out0)) dta odta) [(first dta) (second odta)]))
+      (is (= ((>> (in1) (out1)) dta odta) [(first odta) (second dta)]))
 
-      (are [ispec ospec r] (= ((>> (in0 ispec) (out0 ospec)) dta odta) [dta [r (second odta)]])
+      (are [ispec ospec r] (= ((>> (in0 ispec) (out0 ospec)) dta odta) [r (second odta)])
            0 0 [1 0 0 0]
            0 1 [0 1 0 0]
            0 2 [0 0 1 0]
@@ -97,7 +97,7 @@
            [2 0] [1 3] [0 3 0 1]
 
            [1 2 3] [3 0 1] [3 4 0 2])
-      (are [ispec ospec r] (= ((>> (in1 ispec) (out1 ospec)) dta odta) [dta [(first odta) r]])
+      (are [ispec ospec r] (= ((>> (in1 ispec) (out1 ospec)) dta odta) [(first odta) r])
            0 0 [5 0]
            0 1 [0 5]
            1 0 [6 0]
@@ -111,27 +111,27 @@
     (let [swap-halves (component [in 4] [out 4]
                         (>> (in 0 1) (out 2 3))
                         (>> (in 2 3) (out 0 1)))]
-      (are [in out] (= (swap-halves [in]) [[in] [out]])
+      (are [in out] (= (swap-halves [in]) [out])
            [1 2 3 4] [3 4 1 2]
            [0 0 1 1] [1 1 0 0]))
     (let [doubler (component [in 2] [out 4]
                     (>> (in) (out 0 1))
                     (>> (in) (out 2 3)))]
-      (are [in out] (= (doubler [in]) [[in] [out]])
+      (are [in out] (= (doubler [in]) [out])
            [1 2] [1 2 1 2]
            [0 1] [0 1 0 1])))
   (testing "Single input, multiple outputs"
     (let [split-halves (component [in 4] [upper 2 lower 2]
                          (>> (in 0 1) (upper))
                          (>> (in 2 3) (lower)))]
-      (are [in a b] (= (split-halves [in]) [[in] [a b]])
+      (are [in a b] (= (split-halves [in]) [a b])
            [1 2 3 4] [1 2] [3 4]
            [0 0 1 1] [0 0] [1 1])))
   (testing "Multiple inputs, single output."
     (let [join-halves (component [upper 2 lower 2] [out 4]
                         (>> (upper) (out 0 1))
                         (>> (lower) (out 2 3)))]
-      (are [a b out] (= (join-halves [a b]) [[a b] [out]])
+      (are [a b out] (= (join-halves [a b]) [out])
            [1 2] [3 4] [1 2 3 4]
            [0 0] [1 1] [0 0 1 1])))
   (testing "Combination of Components."
@@ -143,7 +143,7 @@
                          (>> (in 2 3) (lower)))
           swap-and-split (component [in 4] [a 2 b 2]
                            (>> (in) swap-halves split-halves [(a) (b)]))]
-      (are [in a b] (= (swap-and-split [in]) [[in] [a b]])
+      (are [in a b] (= (swap-and-split [in]) [a b])
            [1 2 3 4] [3 4] [1 2]
            [0 0 1 1] [1 1] [0 0]))))
 
