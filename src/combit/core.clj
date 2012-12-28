@@ -61,9 +61,9 @@
    sequences."
   [inputs outputs transformations]
   (reduce
-    (fn [[_ o] transform]
-      (transform inputs o))
-    [inputs outputs]
+    (fn [outputs transform]
+      (transform inputs outputs))
+    outputs
     transformations))
 
 (defmacro component
@@ -82,9 +82,9 @@
                out# ~(vec (map (fn [[_ spec]]
                                  `(u/new-vector ~(:width spec))) 
                                output-pairs))
-               [_# out#] (run-component-transformations in# out# ~transform)
+               out# (run-component-transformations in# out# ~transform)
                out# (vec (take ~output-count out#))]
-           (vector in# out#))))))
+           out#)))))
 
 ;; ### Combinations
 ;;
@@ -101,17 +101,17 @@
   (reduce
     (fn [t1 t2]
       (fn [inputs outputs]
-        (let [o (cond (fn? t1) (second (t1 inputs outputs))
-                      (coll? t1) (map (fn [t] (second (t inputs outputs))) t1)
+        (let [o (cond (fn? t1) (t1 inputs outputs)
+                      (coll? t1) (map (fn [t] (t inputs outputs)) t1)
                       :else (u/throw-error ">>" "Not a valid transformation: " t1))
-              o (cond (fn? t2) (second (t2 o outputs))
+              o (cond (fn? t2) (t2 o outputs)
                       (coll? t2) (reduce
                                    (fn [outputs [tx ox]]
-                                     (second (tx [ox] outputs)))
+                                     (tx [ox] outputs))
                                    outputs
                                    (map vector t2 o))
                       :else (u/throw-error ">>" "Not a valid transformation: " t2))]
-          (vector inputs o))))
+          o)))
     transformations))
 
 ;; ### Input Getter / Output Setter
@@ -144,7 +144,7 @@
       (let [f (input-getter width spec)]
         (fn [inputs outputs]
           (let [input (nth inputs index)]
-            [inputs [(f input)]]))))
+            [(f input)]))))
     (wrap-with-range width)))
 
 (defn output
@@ -155,12 +155,11 @@
     (fn [spec]
       (let [f (output-setter width spec)]
         (fn [inputs outputs]
-          (let [output (nth outputs index)
-                outputs (concat
-                          (take index outputs)
-                          [(f inputs output)]
-                          (drop (inc index) outputs))]
-            (vector inputs outputs)))))
+          (let [output (nth outputs index)]
+            (concat
+              (take index outputs)
+              [(f inputs output)]
+              (drop (inc index) outputs))))))
     (wrap-with-range width)))
 
 (defn const
@@ -172,8 +171,8 @@
     (->
       (fn [spec]
         (let [f (input-getter width spec)]
-          (fn [inputs outputs]
-            [inputs [(f data)]])))
+          (fn [_ _]
+            [(f data)])))
       (wrap-with-range width))))
 
 (defn- input-getter
@@ -201,10 +200,15 @@
   ;; Check
   (when-not (vector? sym)
     (u/throw-error "with-outputs" sym " should be vector!"))
+  (doseq [s sym]
+    (when-not (symbol? s)
+      (u/throw-error "with-outputs" "output vector for " input-form " contains non-symbol " s)))
 
   ;; Create Binding
-  [sym `(let [[_# o#] (~input-form ~inputs ~outputs)]
-          (map const o#))])
+  (vector
+    sym 
+    `(let [o# (~input-form ~inputs ~outputs)]
+       (map const o#))))
 
 (defmacro with-outputs
   [output-bindings & body]
@@ -224,6 +228,5 @@
        (let [~@(mapcat
                  (fn [[sym input-form]]
                    (generate-output-binding input-sym output-sym sym input-form))
-                 binding-pairs)
-             [_# o#] (run-component-transformations ~input-sym ~output-sym ~transform)]
-         (vector ~input-sym o#)))))
+                 binding-pairs)]
+         (run-component-transformations ~input-sym ~output-sym ~transform)))))
