@@ -40,8 +40,13 @@
         sym
         (cond (and (integer? spec) (pos? spec)) (-> {} (assoc :width spec))
               (and (map? spec) (contains? spec :width)) spec
-              :else (throw (Exception. (str "Unknown Input/Output specification: " spec))))))
+              :else (u/throw-error "component" "Unknown Input/Output specification: " spec))))
     (partition 2 specs)))
+
+(defn- normalize-transformations
+  "Normalize the transformations in the `component` body."
+  [transformations]
+  (vec transformations))
 
 (defn- create-component-let-bindings
   [f pairs]
@@ -67,7 +72,8 @@
   (let [input-pairs (normalize-specs inputs)
         output-pairs (normalize-specs outputs)
         input-count (count input-pairs)
-        output-count (count output-pairs)]
+        output-count (count output-pairs)
+        transform (normalize-transformations transformations)]
     `(let [~@(concat
                (create-component-let-bindings `input input-pairs)
                (create-component-let-bindings `output output-pairs))]
@@ -76,7 +82,7 @@
                out# ~(vec (map (fn [[_ spec]]
                                  `(u/new-vector ~(:width spec))) 
                                output-pairs))
-               [_# out#] (run-component-transformations in# out# ~(vec transformations))
+               [_# out#] (run-component-transformations in# out# ~transform)
                out# (vec (take ~output-count out#))]
            (vector in# out#))))))
 
@@ -97,14 +103,14 @@
       (fn [inputs outputs]
         (let [o (cond (fn? t1) (second (t1 inputs outputs))
                       (coll? t1) (map (fn [t] (second (t inputs outputs))) t1)
-                      :else (throw (Exception. (str "Not a valid transformation: " t1))))
+                      :else (u/throw-error ">>" "Not a valid transformation: " t1))
               o (cond (fn? t2) (second (t2 o outputs))
                       (coll? t2) (reduce
                                    (fn [outputs [tx ox]]
                                      (second (tx [ox] outputs)))
                                    outputs
                                    (map vector t2 o))
-                      :else (throw (Exception. (str "Not a valid transformation: " t2))))]
+                      :else (u/throw-error ">>" "Not a valid transformation: " t2))]
           (vector inputs o))))
     transformations))
 
@@ -127,11 +133,11 @@
          (if (>= upper lower)
            (range lower (inc upper))
            (reverse (range upper (inc lower)))))
-       (throw (Exception. (str "Invalid lower/upper bound: " lower " -> " upper)))))))
+       (u/throw-error "input/output" "Invalid lower/upper bound: " lower " -> " upper)))))
 
 (defn input
   "Create function that, when supplied with an input selector specification (i.e. the indices
-   of elements to extract from a sequence, produces an input getter function."
+   of elements to extract from a sequence), produces an input getter function."
   [index width]
   (->
     (fn [spec]
@@ -143,7 +149,7 @@
 
 (defn output
   "Create function that, when supplied with an output selector specification (i.e. the indices
-   of elements to replace in a sequence, produces an output setter function."
+   of elements to replace in a sequence), produces an output setter function."
   [index width]
   (-> 
     (fn [spec]
@@ -156,6 +162,19 @@
                           (drop (inc index) outputs))]
             (vector inputs outputs)))))
     (wrap-with-range width)))
+
+(defn const
+  "Create function that, when supplied with an input selector specification (i.e. the indices
+   of elements to extract from a sequence), produces an input getter function operating on the
+   constant data supplied."
+  [data]
+  (let  [width (data/element-count data)]
+    (->
+      (fn [spec]
+        (let [f (input-getter width spec)]
+          (fn [inputs outputs]
+            [inputs [(f data)]])))
+      (wrap-with-range width))))
 
 (defn- input-getter
   [width elements-to-get]
@@ -173,3 +192,38 @@
         (data/set-at output dest-index (data/get-at data src-index)))
       (vec output)
       (map vector (range) elements-to-set))))
+
+;; ## Utilities
+
+(defn generate-output-binding
+  [inputs outputs sym input-form]
+
+  ;; Check
+  (when-not (vector? sym)
+    (u/throw-error "with-outputs" sym " should be vector!"))
+
+  ;; Create Binding
+  [sym `(let [[_# o#] (~input-form ~inputs ~outputs)]
+          (map const o#))])
+
+(defmacro with-outputs
+  [output-bindings & body]
+  
+  ;; Check
+  (when-not (vector? output-bindings)
+    (u/throw-error "with-outputs" output-bindings " should be a vector!"))
+  (when-not (= (rem (count output-bindings) 2) 0)
+    (u/throw-error "with-outputs" "Expecting an even number of binding forms."))
+
+  ;; Create function.
+  (let [binding-pairs (partition 2 output-bindings)
+        input-sym (gensym "i_")
+        output-sym (gensym "o_")
+        transform (normalize-transformations body)]
+    `(fn [~input-sym ~output-sym]
+       (let [~@(mapcat
+                 (fn [[sym input-form]]
+                   (generate-output-binding input-sym output-sym sym input-form))
+                 binding-pairs)
+             [_# o#] (run-component-transformations ~input-sym ~output-sym ~transform)]
+         (vector ~input-sym o#)))))

@@ -10,3 +10,8 @@
      (->>
        (repeatedly (constantly initial))
        (take len)))))
+
+(defn throw-error
+  "Throw Error Exception."
+  [sender & parts]
+  (throw (Exception. (str "[" sender "] " (apply str parts)))))
