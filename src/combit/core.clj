@@ -15,17 +15,9 @@
 ;;
 ;; ### Components
 ;;
-;; A Combit component takes a seq of input data and produces a tupel containing the 
-;; given inputs, as well as a seq of output data.
-;;
-;;    (component [a 32] [b 16 c 16] ...)
-;;    ; =>
-;;    (fn [[a-in & _] & _] 
-;;      (vector [a-in] ...))
-;;
 ;; Combit components consist of sets of output manipulation functions, taking the inputs
-;; and the current state of the outputs as parameters and producing a tupel of inputs destined
-;; for a subsequent processing function, as well as the seq of newly-generated outputs.
+;; and the current state of the outputs as parameters and producing a new seq of outputs
+;; to either be used by some subsequent processing function or the output generation.
 ;; These transformation functions are applied in the order they are given.
 
 (declare input output)
@@ -49,12 +41,25 @@
   (vec transformations))
 
 (defn- create-component-let-bindings
+  "Create let-bindings for `component` macro."
   [f pairs]
   (apply concat
          (map-indexed
            (fn [index [sym spec]]
              `[~sym (~f ~index ~(:width spec))])
            pairs)))
+
+(defn- create-component-initial-outputs
+  "Create intial output vector for `component` macro,"
+  [pairs]
+  (vec
+    (map 
+      (fn [[sym spec]]
+        (cond (contains? spec :initial) (:initial spec)
+              (contains? spec :width) `(u/new-vector ~(:width spec))
+              :else (u/throw-error "component" "malformed output spec: " spec)))
+      pairs)))
+
 
 (defn run-component-transformations
   "Run the given transformations on the given input and output
@@ -66,6 +71,15 @@
     outputs
     transformations))
 
+(defn check-component-seq
+  "Check if the given parameter is a seq with the given element count."
+  [s expected-count]
+  (when-not (or (nil? s) (seq? s))
+    (u/throw-error "check-component-s" "expected sequence of s, got: " s))
+  (let [c (count s)]
+    (when-not (= c expected-count)
+      (u/throw-error "check-component-s" "expected " expected-count " s, got " c))))
+
 (defmacro component
   "Create new component."
   [inputs outputs & transformations]
@@ -76,15 +90,23 @@
         transform (normalize-transformations transformations)]
     `(let [~@(concat
                (create-component-let-bindings `input input-pairs)
-               (create-component-let-bindings `output output-pairs))]
-       (fn [i# & _#]
-         (let [in#  (vec (take ~input-count i#))
-               out# ~(vec (map (fn [[_ spec]]
-                                 `(u/new-vector ~(:width spec))) 
-                               output-pairs))
-               out# (run-component-transformations in# out# ~transform)
-               out# (vec (take ~output-count out#))]
-           out#)))))
+               (create-component-let-bindings `output output-pairs))
+           initial-outputs# ~(create-component-initial-outputs output-pairs)]
+       (fn [inputs# & _#]
+         (let [inputs# (seq inputs#)]
+           (check-component-seq inputs# ~input-count)
+           (let [outputs# (seq
+                            (run-component-transformations 
+                              inputs# initial-outputs# ~transform))]
+             (check-component-seq outputs# ~output-count)
+             (vec outputs#)))))))
+
+(defmacro defcomponent
+  "Define new component."
+  [id inputs outputs & transformations]
+  `(def ~id 
+     (component ~inputs ~outputs
+       ~@transformations)))
 
 ;; ### Combinations
 ;;
@@ -116,7 +138,22 @@
 
 ;; ### Input Getter / Output Setter
 
-(declare input-getter output-setter)
+(defn- input-getter
+  "Create function that, when supplied with CombitData returns the elements given by index."
+  [width elements-to-get]
+  (if (some #(or (>= % width) (< % 0)) elements-to-get)
+    (u/throw-error "input-getter" "not a valid data range (width is " width "): " elements-to-get))
+    (fn [data]
+      (get-elements data elements-to-get)))
+
+(defn- output-setter
+  "Create function that, when supplied with CombitData as input and output, alters the output
+   at the given indices."
+  [width elements-to-set]
+  (if (some #(or (>= % width) (< % 0)) elements-to-set)
+    (u/throw-error "input-getter" "not a valid data range (width is " width "): " elements-to-set)
+    (fn [[data & _] output]
+      (set-elements output elements-to-set data))))
 
 (defn- wrap-with-range
   "Wrap a function that expects a single parameter (a range specification) with the possibility to
@@ -175,26 +212,9 @@
             [(f data)])))
       (wrap-with-range width))))
 
-(defn- input-getter
-  [width elements-to-get]
-  (fn [data]
-    (map
-      (fn [index]
-        (data/get-at data index))
-      elements-to-get)))
-
-(defn- output-setter
-  [width elements-to-set]
-  (fn [[data & _] output]
-    (reduce
-      (fn [output [src-index dest-index]]
-        (data/set-at output dest-index (data/get-at data src-index)))
-      (vec output)
-      (map vector (range) elements-to-set))))
-
 ;; ## Utilities
 
-(defn generate-output-binding
+(defn- generate-output-binding
   [inputs outputs sym input-form]
 
   ;; Check
