@@ -22,7 +22,7 @@
 
 (declare input output)
 
-(defn- normalize-specs
+(defn normalize-specs
   "Convert a seq of `[symbol block-spec symbol block-spec ...]` to a seq of
    `[[symbol normalized-spec] [symbol-normalized-spec]]` pairs."
   [specs]

@@ -42,3 +42,11 @@
     (let [input-blocks (split-inputs inputs block-sizes)
           output-blocks (map f input-blocks)]
       (concat-output-blocks output-blocks))))
+
+(defmacro stream-component
+  "Create new stream component function, operating on blocks of the given sizes."
+  [inputs outputs & transformations]
+  (let [input-pairs (normalize-specs inputs)
+        input-sizes (vec (map (comp :width second) input-pairs))]
+    `(let [c# (component ~inputs ~outputs ~@transformations)]
+       (wrap-stream c# ~input-sizes)))) 
