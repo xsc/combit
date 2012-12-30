@@ -14,8 +14,17 @@
   (remove-elements [this indices]
     "Create new data block consisting of all elements expect the ones at the given indices.
      Indices might be rearranged afterwards.")
+  (concat-elements [this values]
+    "Append the given seq of values to this data block.")
   (element-count [this] 
-    "Get the number of elements."))
+    "Get the number of elements.")
+  (data-seq [this]
+    "Create lazy seq of elements."))
+
+(defn empty-data?
+  "Returns true if the data contains elements."
+  [this]
+  (not (data-seq this)))
 
 (defn set-at
   "Set the element at the given position to the given value."
@@ -32,11 +41,18 @@
   [this index]
   (remove-elements this [index]))
 
+(defn concat-data
+  "Concatenate the given data blocks."
+  [& ds]
+  (reduce
+    (fn [data d]
+      (concat-elements data (data-seq d)))
+    ds))
+
 ;; ### Built-In Implementations
 
-(extend-protocol CombitData
-
-  clojure.lang.IPersistentVector
+(extend-type clojure.lang.IPersistentVector
+  CombitData
   (set-elements [this indices values]
     (vec 
       (reduce
@@ -47,26 +63,29 @@
   (get-elements [this indices]
     (vec (map #(get this %) indices)))
   (remove-elements [this indices]
-    (->> 
-      (map vector this (range))
-      (filter (comp not (set indices) second))
-      (map first)
-      vec))
+    (vec (remove-elements (seq this) indices)))
+  (concat-elements [this values]
+    (vec (concat this values)))
   (element-count [this]
     (count this))
+  (data-seq [this]
+    (seq this)))
 
-  clojure.lang.ISeq
+(extend-type clojure.lang.ISeq
+  CombitData
   (set-elements [this indices values]
     (seq (set-elements (vec this) indices values)))
   (get-elements [this indices]
     (map #(nth this %) indices))
-  (element-count [this]
-    (count this))
   (remove-elements [this indices]
     (->> 
       (map vector this (range))
       (filter (comp not (set indices) second))
       (map first)))
+  (concat-elements [this values]
+    (concat this values))
+  (element-count [this]
+    (count this))
   (data-seq [this]
     this))
 
