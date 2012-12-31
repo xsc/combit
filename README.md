@@ -173,13 +173,13 @@ reasonably fast. Now, the component version, using access to the actual values:
     (>> (const-value (xor-block2 x y)) (out))))
 ```
 
-There is no real gain in readability here. Now, let's have a look at primitives: They have a series
+There is no real gain in readability here, I'm not even sure if there is any actual use for `with-values` and its
+relatives, but hey, something might come up... Well, let's have a look at primitives at last: They have a series
 of one-element inputs and exactly one single-element output. Because of this, they can be written
 like functions:
 
 ```clojure
-(def-primitive xor-base 
-  [a b]
+(def-primitive xor-base [a b]
   (bit-xor a b))
 ```
 
@@ -199,13 +199,16 @@ This actually expresses pretty clearly what's going on, doesn't it?
 Up until now, we had a look on block-based components, processing fixed-size inputs. However, Combit
 offers facilities to use those block-based components to create ones that don't have an input limit.
 This is achieved using the `combit.stream/wrap-stream-component` or `combit.stream/wrap-stream-gate`
-functions which split the given input into small and fitting pieces, then pass them to the udnerlying
+functions which split the given input into small and fitting pieces, then pass them to the underlying
 component, finally merging all the results into one seq of outputs:
 
 ```clojure
 (def even-xor
   ;; uses e.g. one of the above XORs 
   (wrap-stream-component xor [2 2]))
+  
+(even-xor [[1 0 0 1] [1 1 0 0]])
+;; => [[0 1 0 1]]
 ```
 
 `wrap-stream-gate` just assumes that every input has the size 1. There are shorthands here: `def-stream`
