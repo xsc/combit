@@ -81,10 +81,11 @@
   [f]
   (fn x
     ([] x) 
-    ([inputs & _]
+    ([inputs _] (x inputs))
+    ([inputs] 
      (if (some fn? inputs)
        (comb/combine (map #(if (fn? %) % (io/const-data %)) inputs) f)
-       (f inputs)))))
+       (f inputs nil)))))
 
 (defmacro new-component
   "Create new component."
@@ -99,7 +100,7 @@
                (create-component-let-bindings `io/output-data output-pairs))
            initial-outputs# ~(create-component-initial-outputs output-pairs)]
        (wrap-component
-         (fn [inputs# & _#]
+         (fn [inputs# ~'_]
            (let [inputs# (seq inputs#)]
              (check-component-seq inputs# ~input-count)
              (let [outputs# (seq

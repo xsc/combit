@@ -91,6 +91,7 @@
 (defmacro with-values
   "Bind output transformations to names usable as their actual values."
   [value-bindings & body]
+  (check-bindings "with-values" (constantly true) value-bindings)
   (generate-transform-function 
     "with-values" 
     generate-value-binding
