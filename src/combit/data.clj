@@ -34,7 +34,7 @@
 (defn get-at
   "Get the element at the given position."
   [this index]
-  (first (get-elements this [index])))
+  (first (data-seq (get-elements this [index]))))
 
 (defn remove-at
   "Remove the element at the given position."
