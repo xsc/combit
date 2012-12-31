@@ -63,10 +63,10 @@
   "Check if the given parameter is a seq with the given element count."
   [s expected-count]
   (when-not (or (nil? s) (seq? s))
-    (u/throw-error "check-component-s" "expected sequence of s, got: " s))
+    (u/throw-error "check-component-seq" "expected sequence of data blocks, got: " s))
   (let [c (count s)]
     (when-not (= c expected-count)
-      (u/throw-error "check-component-s" "expected " expected-count " s, got " c))))
+      (u/throw-error "check-component-seq" "expected " expected-count " data blocks, got " c))))
 
 ;; ### Components
 ;;
@@ -79,10 +79,12 @@
   "Wrap a component so it converts (c [a b]) to (>> [a b] c) if there are any
    functions inside the given input seq."
   [f]
-  (fn [inputs & _]
-    (if (some fn? inputs)
-      (comb/combine (map #(if (fn? %) % (io/const-data %)) inputs) f)
-      (f inputs))))
+  (fn x
+    ([] x) 
+    ([inputs & _]
+     (if (some fn? inputs)
+       (comb/combine (map #(if (fn? %) % (io/const-data %)) inputs) f)
+       (f inputs)))))
 
 (defmacro new-component
   "Create new component."
