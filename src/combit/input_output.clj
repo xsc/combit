@@ -4,22 +4,21 @@
   (:use [combit.data :as data :only [get-elements set-elements]]
         [combit.utils :as u]))
 
-(defn- input-getter
-  "Create function that, when supplied with CombitData returns the elements given by index."
-  [width elements-to-get]
-  (if (some #(or (>= % width) (< % 0)) elements-to-get)
-    (u/throw-error "input-getter" "not a valid data range (width is " width "): " elements-to-get))
-    (fn [data]
-      (data/get-elements data elements-to-get)))
+;; ## Input/Output Selection
 
-(defn- output-setter
-  "Create function that, when supplied with CombitData as input and output, alters the output
-   at the given indices."
-  [width elements-to-set]
+(defn- get-input
+  "Get elements from input data."
+  [data width elements-to-get]
+  (if (some #(or (>= % width) (< % 0)) elements-to-get)
+    (u/throw-error "input-getter" "not a valid data range (width is " width "): " elements-to-get)
+    (data/get-elements data elements-to-get)))
+
+(defn- set-output
+ "Set elements in output data."
+  [width elements-to-set data output]
   (if (some #(or (>= % width) (< % 0)) elements-to-set)
     (u/throw-error "input-getter" "not a valid data range (width is " width "): " elements-to-set)
-    (fn [[data & _] output]
-      (data/set-elements output elements-to-set data))))
+    (data/set-elements output elements-to-set data)))
 
 (defn- wrap-with-range
   "Wrap a function that expects a single parameter (a range specification) with the possibility to
@@ -40,14 +39,10 @@
 
 (defn input-data
   "Create function that, when supplied with an input selector specification (i.e. the indices
-   of elements to extract from a sequence), produces an input getter function."
-  [index width]
+   of elements to extract from a sequence), produces the associated data."
+  [data width]
   (->
-    (fn [spec]
-      (let [f (input-getter width spec)]
-        (fn [inputs & _]
-          (let [input (nth inputs index)]
-            [(f input)]))))
+    (partial get-input data width)
     (wrap-with-range width)))
 
 (defn output-data
@@ -56,24 +51,85 @@
   [index width]
   (-> 
     (fn [spec]
-      (let [f (output-setter width spec)]
-        (fn [inputs outputs]
-          (let [output (nth outputs index)]
-            (concat
-              (take index outputs)
-              [(f inputs output)]
-              (drop (inc index) outputs))))))
+      (fn [inputs outputs]
+        (let [output (nth outputs index)]
+          (concat
+            (take index outputs)
+            [(set-output width spec (first inputs) output)]
+            (drop (inc index) outputs)))))
     (wrap-with-range width)))
 
 (defn const-data
   "Create function that, when supplied with an input selector specification (i.e. the indices
-   of elements to extract from a sequence), produces an input getter function operating on the
-   constant data supplied."
+   of elements to extract from a sequence), produces the associated constant data."
   [data]
-  (let  [width (data/element-count data)]
-    (->
-      (fn [spec]
-        (let [f (input-getter width spec)]
-          (fn [_ _]
-            [(f data)])))
-      (wrap-with-range width))))
+  (input-data data (data/element-count data)))
+
+;; ## Write to Outputs
+
+(defn write-inputs
+  "Create function that connects the given inputs to the given output setter function(s).
+   Output setters can be given as:
+   - a single function: write to the given output
+   - a set of functions: write the same value to all given outputs
+   - a seq of functions: write the "
+  [inputs output-setters]
+  (if-not inputs identity
+    (letfn [(run-setters [setters o]
+              (reduce 
+                (fn [o s]
+                  (s inputs o))
+                o
+                setters))]
+    (cond 
+      (set? output-setters) (partial run-setters (seq output-setters))
+      (fn? output-setters) (partial run-setters (vector output-setters))
+      (coll? output-setters) (->>
+                               (map (fn [input output]
+                                      (write-inputs [input] output))
+                                    inputs
+                                    output-setters)
+                               (apply comp))
+      :else (u/throw-error "write-inputs" "invald output setter specification: " output-setters)))))
+
+;; The `connect->>` function is aimed at providing a concise specification format for
+;; the sequential connection of components. Example:
+;;
+;;     (connect->> [(i 0 7)]
+;;       (swapper)   ;; Components return themselves
+;;       (splitter)
+;;       [(a) (b)])
+;;
+
+(defn connect->>
+  "Create function that transforms a given seq of output blocks. Of the given n 
+   forms, the first n-1 ones will be evaulated by wrapping them in `(->> ...)`
+   whilst the n-th form has to be an actual output setter function (or a seq of those), 
+   getting the final data to write, as well as the current output seq, and producing the 
+   new output state."
+  [initial-inputs & transformations]
+  (if-not (seq transformations)
+    identity
+    (let [output-setters (last transformations)
+          transformers (reverse (drop 1 (reverse transformations)))]
+      (write-inputs
+        (reduce
+          (fn [next-inputs t]
+            (apply t next-inputs))
+          initial-inputs
+          transformers)
+        output-setters))))
+
+;; The above example could also be rewritten (since the first parameter is a single-element
+;; vector) to:
+;;
+;;     (write->> (i 0 7)
+;;       (swapper)
+;;       (splitter)
+;;       [(a) (b)])
+;;
+
+(defn write->>
+  "Create function that writes the given data to the given output setter function."
+  [v & transformations]
+  (apply connect->> (vector v) transformations))

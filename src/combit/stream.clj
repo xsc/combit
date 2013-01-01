@@ -2,7 +2,7 @@
        :author "Yannick Scherer" }
   combit.stream
   (:use [combit.data :as data]
-        [combit.component :as c :only [normalize-specs wrap-component]]
+        [combit.component :as c :only [normalize-specs]]
         [combit.core :only [component gate primitive-fn]]))
 
 ;; ## Simple Stream Components
@@ -50,9 +50,9 @@
   "Wrap a component function, passing subsequent blocks of the given sizes to it."
   [f block-sizes]
   (c/wrap-component
-    (fn [inputs & _]
+    (fn [& inputs]
       (let [input-blocks (split-inputs inputs block-sizes)
-            output-blocks (map f input-blocks)]
+            output-blocks (map #(apply f %) input-blocks)]
         (concat-output-blocks output-blocks)))))
 
 (defn wrap-stream-gate
@@ -99,3 +99,15 @@
   [id inputs & body]
   `(def ~id (stream-primitive ~inputs ~@body)))
 
+;; ## Stream Components with Feedback
+;;
+;; A component's output for a block A can be used as the same component's input for
+;; a block B (where B follows A) by using `wrap-feedback-component` or `wrap-feedback-gate`:
+;;
+;;     (def-gate xor1 [current-bit previous-result] [result] ...)
+;;     (def xor
+;;       (wrap-feedback-gate xor1 [[_ p] :> [r]]
+;;         (>> (r) (p))))
+;;
+;;         
+;;         

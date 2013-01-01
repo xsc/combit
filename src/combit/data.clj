@@ -22,7 +22,7 @@
     "Create lazy seq of elements."))
 
 (defn empty-data?
-  "Returns true if the data contains elements."
+  "Returns true if the data contains no elements."
   [this]
   (not (data-seq this)))
 
