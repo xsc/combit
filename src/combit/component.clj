@@ -30,7 +30,7 @@
         (assoc :as as)
         (assoc :specs
           (let [s (normalize-io-spec spec)]
-            (for [n (range c)] `[~'_ ~s])))))
+            (for [n (range c)] `[~(gensym) ~s])))))
     (let [pairs (partition 2 specs)]
       (-> {}
         (assoc :as nil)
@@ -121,6 +121,7 @@
                        `[~sym (io/output-data ~i ~(:width spec))])
                      (range)
                      output-pairs)
+                 ~(or output-as '_) ~(vec (map first output-pairs))
                  ~(or input-as '_) inputs#
                  outputs# (run-component-transformations
                             initial-outputs#
