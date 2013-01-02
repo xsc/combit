@@ -91,7 +91,7 @@
 ;; These transformation functions are applied in the order they are given.
 
 (defn wrap-component
-  "´Make a component function return itself, when called without arguments."
+  "Make a component function return itself, when called without arguments."
   [f]
   (fn x
     ([] x)

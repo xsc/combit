@@ -3,7 +3,7 @@
   combit.stream
   (:use [combit.data :as data]
         [combit.component :as c :only [normalize-specs]]
-        [combit.core :only [component gate primitive-fn]]))
+        [combit.core :only [component gate primitive]]))
 
 ;; ## Simple Stream Components
 ;;
@@ -91,7 +91,7 @@
   "Create new stream primitive (inputs of size 1, exactly one output of size 1)."
   [inputs & body]
   `(->
-     (primitive-fn ~inputs ~@body)
+     (primitive ~inputs ~@body)
      (wrap-stream-gate)))
 
 (defmacro def-stream-primitive
