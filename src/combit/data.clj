@@ -62,8 +62,13 @@
     (persistent!
       (reduce
         (fn [vc block]
-          (let [c (count block)]
-            (reduce conj! vc (map #(get-index c %) (range c)))))
+          (if-not (vector? data)
+            (u/throw-error "concat-elements", "expected vectors as input, given: " data)
+            (let [c (count block)]
+              (reduce (fn [vc i]
+                        (conj! vc (get block i)))
+                      vc
+                      (map #(get-index c %) (range c))))))
         vc
         data))))
 
@@ -83,15 +88,15 @@
 
 (defn remove-at
   "Remove the element at the given position."
-  [this index]
-  (remove-elements this [index]))
+  [data index]
+  (remove-elements (vec data) [index]))
 
 (defn take-elements
   "Create new data consisting of the elements with indices 0 to n-1."
   [n data]
-  (get-elements data (range n)))
+  (get-elements (vec data) (range n)))
 
 (defn drop-elements
   "Create new data consisting of the elements with indices n to N."
   [n data]
-  (remove-elements data (range n)))
+  (remove-elements (vec data) (range n)))
