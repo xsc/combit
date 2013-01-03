@@ -16,15 +16,18 @@
 (defn- concat-output-blocks
   "Concatenate a series of outputs to a single output."
   [output-blocks]
-  (reduce
-    (fn [out1 out2]
-      (let [out1 (if (fn? out1) (out1) out1)
-            out2 (if (fn? out2) (out2) out2)]
-        (map
-          (fn [block1 block2]
-            (data/concat-data block1 block2))
-          out1 out2)))
-    output-blocks))
+  (if (seq (rest output-blocks))
+    (reduce
+      (fn [out1 out2]
+        (let [out1 (if (fn? out1) (out1) out1)
+              out2 (if (fn? out2) (out2) out2)]
+          (map
+            (fn [block1 block2]
+              (data/concat-data block1 block2))
+            out1 out2)))
+      output-blocks)
+    (let [b (first output-blocks)]
+      (if (fn? b) (b) b))))
 
 (defn- split-inputs
   "Create lazy seq of inputs consisting of data with the given element count.
@@ -54,8 +57,9 @@
   (->
     (fn [& inputs]
       (let [input-blocks (split-inputs inputs block-sizes)
-            output-blocks (map #(apply f %) input-blocks)]
-        (concat-output-blocks output-blocks)))
+            output-blocks (map #(apply f %) input-blocks)
+            outputs# (concat-output-blocks output-blocks)]
+        (constantly outputs#)))
     (c/wrap-component (count block-sizes))))
 
 (defn wrap-stream-gate
@@ -69,7 +73,7 @@
   "Create new stream component function, operating on blocks of the given sizes."
   [inputs outputs & transformations]
   (let [input-pairs (c/normalize-specs inputs)
-        input-sizes (vec (map (comp :width second) input-pairs))]
+        input-sizes (vec (map (comp :width second) (:specs input-pairs)))]
     `(let [c# (component ~inputs ~outputs ~@transformations)]
        (wrap-stream-component c# ~input-sizes)))) 
 
@@ -81,11 +85,9 @@
 (defmacro stream-gate
   "Create new stream gate function, operating on blocks of size 1."
   [inputs outputs & transformations]
-  (let [input-pairs (c/normalize-specs inputs)
-        input-count (count input-pairs)]
-    `(->
-       (gate ~inputs ~outputs ~@transformations)
-       (wrap-stream-gate ~input-count))))
+  (let [inputs (mapcat (fn [sym] `[~sym 1]) inputs)
+        outputs (mapcat (fn [sym] `[~sym 1]) outputs)]
+    `(stream-component ~(vec inputs) ~(vec outputs) ~@transformations)))
 
 (defmacro def-stream-gate
   "Define new stream gate function."
