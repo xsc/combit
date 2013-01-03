@@ -21,7 +21,7 @@
       (fn [out1 out2]
         (map
           (fn [block1 block2]
-            (data/concat-data block1 block2))
+            (data/concat-elements block1 block2))
           out1 out2))
       output-blocks)))
 
@@ -40,7 +40,7 @@
             (map drop-elements block-sizes inputs))
           (lazy-split [inputs]
             (lazy-seq
-              (when (some (complement data/empty-data?) inputs)
+              (when (some (complement empty?) inputs)
                 (cons (next-inputs inputs)
                       (lazy-split (rest-inputs inputs))))))]
     (lazy-split inputs)))

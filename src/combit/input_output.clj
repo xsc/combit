@@ -40,7 +40,7 @@
    of elements to extract from a sequence), produces the associated data."
   [data width]
   (->
-    (partial get-input data width)
+    (partial get-input (vec data) width)
     (wrap-with-range width)))
 
 (defn output-data
@@ -61,4 +61,4 @@
   "Create function that, when supplied with an input selector specification (i.e. the indices
    of elements to extract from a sequence), produces the associated constant data."
   [data]
-  (input-data data (data/element-count data)))
+  (input-data data (count data)))
