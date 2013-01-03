@@ -87,7 +87,7 @@
   (element-count [this]
     (count this))
   (data-seq [this]
-    this))
+    (seq this)))
 
 ;; ## Take/Drop
 ;;

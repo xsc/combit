@@ -16,18 +16,14 @@
 (defn- concat-output-blocks
   "Concatenate a series of outputs to a single output."
   [output-blocks]
-  (if (seq (rest output-blocks))
+  (let [output-blocks (map #(if (fn? %) (%) %) output-blocks)]
     (reduce
       (fn [out1 out2]
-        (let [out1 (if (fn? out1) (out1) out1)
-              out2 (if (fn? out2) (out2) out2)]
-          (map
-            (fn [block1 block2]
-              (data/concat-data block1 block2))
-            out1 out2)))
-      output-blocks)
-    (let [b (first output-blocks)]
-      (if (fn? b) (b) b))))
+        (map
+          (fn [block1 block2]
+            (data/concat-data block1 block2))
+          out1 out2))
+      output-blocks)))
 
 (defn- split-inputs
   "Create lazy seq of inputs consisting of data with the given element count.
