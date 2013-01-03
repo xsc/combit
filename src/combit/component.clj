@@ -24,7 +24,7 @@
 
 ;; ### Currying
 
-(defn- curry
+(defn curry
   "Create function that enables currying of a given function f with n parameters,
    always passing the given arguments first. If all parameters are given, the function
    will be evaluated."
@@ -39,7 +39,7 @@
                        (concat args new-args)
                        (apply f))))))))
 
-(defn- curry-constantly
+(defn curry-constantly
   "Create function that enables currying for a given function f, forcing the final result
    to be `(constantly (vector (f ...)))`. This is useful for concatenation (see `conc`)
    where exactly such results are expected. The result of f will thus be interpreted as
@@ -51,23 +51,23 @@
 
 (defn conc
   "Concatenate components, creating a new one. Since components produce functions without
-   parameters, such intermediate values will be evaluated when encountered."
+   parameters, such intermediate values will be evaluated when encountered. "
   [& fs]
   (if (= (count fs) 1)
     (let [r (first fs)]
       (if (fn? r) r (constantly (vector r))))
     (fn [& args]
-      (if-let [v (reduce
+      (if-let [v (reduce 
                    (fn [r f]
-                     (if (fn? f)
-                       (let [next-args (if (fn? r) (r) [r])]
-                         (when-not (coll? next-args)
-                           (u/throw-error "conc" "expected output collection/vector; given: " next-args))
-                         (apply f next-args))
-                       f))
+                     (let [next-args (if (fn? r) (r) [r])]
+                       (cond (not (fn? f))           f ;; the given value is used as a direct input
+                             (not next-args)         f ;; no arguments -> f must produce them
+                             (not (coll? next-args))
+                             (u/throw-error "conc" "expected output collection, but got: " next-args)
+                             :else (apply f next-args))))
                    (constantly args)
-                   fs)]
-        (if (fn? v) (v) v)
+                   (concat fs [vector]))]
+        v
         (u/throw-error "conc" "last transformer function has not returned a value.")))))
 
 
