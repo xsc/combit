@@ -18,10 +18,12 @@
   [output-blocks]
   (reduce
     (fn [out1 out2]
-      (map
-        (fn [block1 block2]
-          (data/concat-data block1 block2))
-        out1 out2))
+      (let [out1 (if (fn? out1) (out1) out1)
+            out2 (if (fn? out2) (out2) out2)]
+        (map
+          (fn [block1 block2]
+            (data/concat-data block1 block2))
+          out1 out2)))
     output-blocks))
 
 (defn- split-inputs
@@ -49,16 +51,17 @@
 (defn wrap-stream-component
   "Wrap a component function, passing subsequent blocks of the given sizes to it."
   [f block-sizes]
-  (c/wrap-component
+  (->
     (fn [& inputs]
       (let [input-blocks (split-inputs inputs block-sizes)
             output-blocks (map #(apply f %) input-blocks)]
-        (concat-output-blocks output-blocks)))))
+        (concat-output-blocks output-blocks)))
+    (c/wrap-component (count block-sizes))))
 
 (defn wrap-stream-gate
   "Wrap a component function, passing subsequent one-element data containers to it."
-  [f]
-  (wrap-stream-component f (repeatedly (constantly 1))))
+  [f input-count]
+  (wrap-stream-component f (take input-count (repeatedly (constantly 1)))))
 
 ;; ### Macros
 
@@ -78,9 +81,11 @@
 (defmacro stream-gate
   "Create new stream gate function, operating on blocks of size 1."
   [inputs outputs & transformations]
-  `(->
-     (gate ~inputs ~outputs ~@transformations)
-     (wrap-stream-gate)))
+  (let [input-pairs (c/normalize-specs inputs)
+        input-count (count input-pairs)]
+    `(->
+       (gate ~inputs ~outputs ~@transformations)
+       (wrap-stream-gate ~input-count))))
 
 (defmacro def-stream-gate
   "Define new stream gate function."
@@ -92,7 +97,7 @@
   [inputs & body]
   `(->
      (primitive ~inputs ~@body)
-     (wrap-stream-gate)))
+     (wrap-stream-gate ~(count inputs))))
 
 (defmacro def-stream-primitive
   "Define new stream primitive."

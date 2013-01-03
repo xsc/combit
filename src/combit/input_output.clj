@@ -4,8 +4,6 @@
   (:use [combit.data :as data :only [get-elements set-elements]]
         [combit.utils :as u]))
 
-;; ## Input/Output Selection
-
 (defn- get-input
   "Get elements from input data."
   [data width elements-to-get]
@@ -51,11 +49,11 @@
   [index width]
   (-> 
     (fn [spec]
-      (fn [inputs outputs]
+      (fn [outputs data]
         (let [output (nth outputs index)]
           (concat
             (take index outputs)
-            [(set-output width spec (first inputs) output)]
+            [(set-output width spec (first data) output)]
             (drop (inc index) outputs)))))
     (wrap-with-range width)))
 
@@ -64,72 +62,3 @@
    of elements to extract from a sequence), produces the associated constant data."
   [data]
   (input-data data (data/element-count data)))
-
-;; ## Write to Outputs
-
-(defn write-inputs
-  "Create function that connects the given inputs to the given output setter function(s).
-   Output setters can be given as:
-   - a single function: write to the given output
-   - a set of functions: write the same value to all given outputs
-   - a seq of functions: write the "
-  [inputs output-setters]
-  (if-not inputs identity
-    (letfn [(run-setters [setters o]
-              (reduce 
-                (fn [o s]
-                  (s inputs o))
-                o
-                setters))]
-    (cond 
-      (set? output-setters) (partial run-setters (seq output-setters))
-      (fn? output-setters) (partial run-setters (vector output-setters))
-      (coll? output-setters) (->>
-                               (map (fn [input output]
-                                      (write-inputs [input] output))
-                                    inputs
-                                    output-setters)
-                               (apply comp))
-      :else (u/throw-error "write-inputs" "invald output setter specification: " output-setters)))))
-
-;; The `connect->>` function is aimed at providing a concise specification format for
-;; the sequential connection of components. Example:
-;;
-;;     (connect->> [(i 0 7)]
-;;       (swapper)   ;; Components return themselves
-;;       (splitter)
-;;       [(a) (b)])
-;;
-
-(defn connect->>
-  "Create function that transforms a given seq of output blocks. Of the given n 
-   forms, the first n-1 ones will be evaulated by wrapping them in `(->> ...)`
-   whilst the n-th form has to be an actual output setter function (or a seq of those), 
-   getting the final data to write, as well as the current output seq, and producing the 
-   new output state."
-  [initial-inputs & transformations]
-  (if-not (seq transformations)
-    identity
-    (let [output-setters (last transformations)
-          transformers (reverse (drop 1 (reverse transformations)))]
-      (write-inputs
-        (reduce
-          (fn [next-inputs t]
-            (apply t next-inputs))
-          initial-inputs
-          transformers)
-        output-setters))))
-
-;; The above example could also be rewritten (since the first parameter is a single-element
-;; vector) to:
-;;
-;;     (write->> (i 0 7)
-;;       (swapper)
-;;       (splitter)
-;;       [(a) (b)])
-;;
-
-(defn write->>
-  "Create function that writes the given data to the given output setter function."
-  [v & transformations]
-  (apply connect->> (vector v) transformations))

@@ -4,7 +4,7 @@
   (:use [combit.utils :as u]
         [combit.data :as data]
         [combit.component :as c]
-        [combit.input-output :as io :only [const-data connect->> write->>]]))
+        [combit.input-output :as io :only [const-data]]))
 
 ;; ## Combit
 ;;
@@ -17,13 +17,11 @@
 
 ;; ### Combinator
 
-(def >> 
-  "Combit Combination Operator. (see `combit.input-output/transform->>`)"
-  io/connect->>)
-
-(def >>*
-  "Write a value directly to an output, using the `>>` operator."
-  io/write->>)
+(defn >> 
+  "Combit Output Operation. (see `combit.input-output/transform-ouputs->>`)"
+  [& args]
+  (fn [outputs]
+    (apply c/transform-outputs->> outputs args)))
 
 ;; ### Components
 
@@ -38,6 +36,16 @@
   `(def ~id 
      (component ~inputs ~outputs
        ~@transformations)))
+
+(defn run
+  "Run component on given inputs. Components return a function like
+   `(constantly <actual outputs>)` which is why it has to be evaluated once
+   more to retrieve the final result."
+  [c & args]
+  (when-let [cf (apply c args)]
+    (if (fn? cf)
+      (cf)
+      cf)))
 
 ;; ### Utilities
 
@@ -57,8 +65,9 @@
    of transform functions."
   [output-bindings & transformations]
   `(let [~@(mapcat (fn [[sym input-form]]
-                     `[~sym (let [i# ~input-form]
-                              (map const i#))]) 
+                     `[~sym (let [i# ~input-form
+                                  i# (if (fn? i#) (i#) i#)]
+                              (map const i#))])
                    (partition 2 output-bindings))
          transform# ~(vec transformations)]
      (fn [o#]
@@ -99,9 +108,9 @@
              ~@(mapcat (fn [[input sym]]
                          `[~input (get-at ~input 0)]) input-map)
              v# (do ~@body)]
-           (>>* [v#] (o#))))))
+           (>> [v#] (o#))))))
 
 (defmacro def-primitive
   "Define new primitive."
   [id inputs & body]
-  `(def ~id (primitive-fn ~inputs ~@body)))
+  `(def ~id (primitive ~inputs ~@body)))

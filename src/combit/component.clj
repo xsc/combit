@@ -4,7 +4,112 @@
   (:use [combit.utils :as u]
         [combit.input-output :as io :only [input-data output-data const-data]]))
 
-;; ## Helpers
+;; ## Concept
+;;
+;; A component is a function that takes a fixed number of inputs and produces another 
+;; __function__ without parameters that, when called, returns the final result, consisting
+;; of a seq with a fixed number of outputs.
+;; 
+;; If the component is called with less parameters than it has inputs, it will return
+;; an identical component where the given inputs are already set to the given values
+;; (see "Currying").
+;;
+;; This enables concatenation in a uniform way:
+;;
+;;     (conc a b)
+;;     ;; => (comp b a)
+;;     
+;;     (conc a b c)
+;;     ;; => (conc (conc a b) c)
+
+;; ### Currying
+
+(defn- curry
+  "Create function that enables currying of a given function f with n parameters,
+   always passing the given arguments first. If all parameters are given, the function
+   will be evaluated."
+  ([f n] (curry f n []))
+  ([f n args] (fn x 
+                ([] x)
+                ([& new-args]
+                 (let [c (count new-args)]
+                   (if (< c n)
+                     (curry f (- n c) (concat args new-args))
+                     (->>
+                       (concat args new-args)
+                       (apply f))))))))
+
+(defn- curry-constantly
+  "Create function that enables currying for a given function f, forcing the final result
+   to be `(constantly (vector (f ...)))`. This is useful for concatenation (see `conc`)
+   where exactly such results are expected. The result of f will thus be interpreted as
+   the value of a single component output."
+  [f n]
+  (curry (comp constantly vector f) n))
+
+;; ### Concatenation
+
+(defn conc
+  "Concatenate components, creating a new one. Since components produce functions without
+   parameters, such intermediate values will be evaluated when encountered."
+  [& fs]
+  (if (= (count fs) 1)
+    (let [r (first fs)]
+      (if (fn? r) r (constantly (vector r))))
+    (fn [& args]
+      (reduce
+        (fn [r f]
+            (if (fn? f)
+              (let [next-args (if (fn? r) (r) [r])]
+                (when-not (coll? next-args)
+                  (u/throw-error "conc" "expected output collection/vector; given: " next-args))
+                (apply f next-args))
+              f))
+        (constantly args)
+        fs))))
+
+;; ### Output Transformation
+
+(defn- transform-outputs
+  "Based on the value(s)/value function to write, a transformer function f and the current 
+   state of the outputs, create new outputs."
+  [current-outputs v f]
+  (let [data (if (fn? v) (v) [v])]
+    (f current-outputs data)))
+
+(defn transform-outputs->>
+  "Based on a series of value creation functions and a writer function, transform the given
+   outputs. Example:
+
+     (transform-outputs->> [[:out1 :out2] [nil nil]] 
+       [:out3]                        
+       ;; -> non-function input will be converted to [[:out3]]
+       (juxt first first)
+       ;; -> non-function input will be converted to [[:out3 :out3]]
+       #(vector (first %1) %2)
+       ;; -> result will be [[:out1 :out2] [:out3 :out3]]
+       )
+  "
+  [current-outputs & args]
+  (when (< (count args) 2)
+    (u/throw-error "transform-outputs->>" 
+                   "expected at least one value/value function and the output setter."))
+  (let [c (count args)
+        setter (last args)
+        fs (take (dec c) args)]
+    (transform-outputs current-outputs (apply conc fs) setter)))
+
+;; ## Components
+
+;; ### Component Wrapper 
+
+(defn wrap-component
+  "Wrap component function to exhibit the expected component behaviour."
+  [c input-count]
+  (-> c
+    (curry input-count)))
+
+;; ### Component Specification
 
 (defn normalize-io-spec
   [spec]
@@ -39,6 +144,8 @@
                       [sym (normalize-io-spec spec)])
                     pairs))))))
 
+;; ### Generation Helpers
+
 (defn normalize-transformations
   "Normalize the transformations in the `component` body."
   [transformations]
@@ -59,6 +166,8 @@
               (contains? spec :width) `(u/new-vector ~(:width spec))
               :else (u/throw-error "component" "malformed output spec: " spec)))
       pairs)))
+
+;; ### Run Helpers
 
 (defn run-component-transformations
   "Run the given transformations on the given input and output
@@ -83,19 +192,12 @@
     (when-not (= c expected-count)
       (u/throw-error "check-component-seq" "expected " expected-count " data blocks, got " c))))
 
-;; ### Components
+;; ### Generation Macro
 ;;
 ;; Combit components consist of sets of output manipulation functions, taking the inputs
 ;; and the current state of the outputs as parameters and producing a new seq of outputs
 ;; to either be used by some subsequent processing function or the output generation.
 ;; These transformation functions are applied in the order they are given.
-
-(defn wrap-component
-  "Make a component function return itself, when called without arguments."
-  [f]
-  (fn x
-    ([] x)
-    ([& args] (apply f args))))
 
 (defmacro new-component
   "Create new component."
@@ -109,7 +211,7 @@
     (when-not (pos? input-count)
       (u/throw-error "component" "a component needs at least one input. (use constant data instead)"))
     `(let [initial-outputs# ~(create-component-initial-outputs output-pairs)]
-       (wrap-component
+       (->
          (fn [& [~@(map first input-symbols) :as inputs#]]
            (check-component-seq (seq inputs#) ~input-count)
            (let [~@(mapcat 
@@ -127,4 +229,5 @@
                             initial-outputs#
                             ~(vec transformations))]
              (check-component-seq (seq outputs#) ~output-count)
-             outputs#))))))
+             (constantly outputs#)))
+         (wrap-component ~input-count)))))
