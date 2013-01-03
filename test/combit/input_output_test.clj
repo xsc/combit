@@ -38,10 +38,10 @@
           dta0 [[1 2 3 4]]
           dta1 [[5 6]]
           odta [[0 0 0 0] [0 0]]]
-      (is (= ((out0) dta0 odta) [(first dta0) (second odta)]))
-      (is (= ((out1) dta1 odta) [(first odta) (first dta1)]))
+      (is (= ((out0) odta dta0) [(first dta0) (second odta)]))
+      (is (= ((out1) odta dta1) [(first odta) (first dta1)]))
 
-      (are [spec r] (= ((out0 spec) dta0 odta) [r (second odta)])
+      (are [spec r] (= ((out0 spec) odta dta0) [r (second odta)])
            0 [1 0 0 0]
            1 [0 1 0 0]
            2 [0 0 1 0]
@@ -49,17 +49,17 @@
            [0 2] [1 0 2 0]
            [1 3] [0 1 0 2]
            [3 1] [0 2 0 1])
-      (are [spec r] (= ((out1 spec) dta1 odta) [(first odta) r])
+      (are [spec r] (= ((out1 spec) odta dta1) [(first odta) r])
            0 [5 0]
            1 [0 5]
            [0 1] [5 6]
            [1 0] [6 5])
 
-      (are [l u r] (= ((out0 l u) dta0 odta) [r (second odta)])
+      (are [l u r] (= ((out0 l u) odta dta0) [r (second odta)])
            0 3 (first dta0)
            3 0 (reverse (first dta0))
            1 3 [0 1 2 3]
            2 1 [0 2 1 0])
-      (are [l u r] (= ((out1 l u) dta1 odta) [(first odta) r])
+      (are [l u r] (= ((out1 l u) odta dta1) [(first odta) r])
            0 1 (first dta1)
            1 0 (reverse (first dta1))))))

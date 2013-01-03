@@ -57,16 +57,19 @@
     (let [r (first fs)]
       (if (fn? r) r (constantly (vector r))))
     (fn [& args]
-      (reduce
-        (fn [r f]
-            (if (fn? f)
-              (let [next-args (if (fn? r) (r) [r])]
-                (when-not (coll? next-args)
-                  (u/throw-error "conc" "expected output collection/vector; given: " next-args))
-                (apply f next-args))
-              f))
-        (constantly args)
-        fs))))
+      (if-let [v (reduce
+                   (fn [r f]
+                     (if (fn? f)
+                       (let [next-args (if (fn? r) (r) [r])]
+                         (when-not (coll? next-args)
+                           (u/throw-error "conc" "expected output collection/vector; given: " next-args))
+                         (apply f next-args))
+                       f))
+                   (constantly args)
+                   fs)]
+        (if (fn? v) (v) v)
+        (u/throw-error "conc" "last transformer function has not returned a value.")))))
+
 
 ;; ### Output Transformation
 
@@ -75,7 +78,19 @@
    state of the outputs, create new outputs."
   [current-outputs v f]
   (let [data (if (fn? v) (v) [v])]
-    (f current-outputs data)))
+    (when-not (coll? data)
+      (u/throw-error "transform-outputs" "data to be written is no collection: " data))
+    (cond (coll? f) (reduce 
+                      (fn [o [f b]]
+                        (f o [b]))
+                      current-outputs 
+                      (map vector f data))
+          (set? f) (reduce 
+                     (fn [o f]
+                       (f o data))
+                     current-outputs
+                     f)
+          :else (f current-outputs data))))
 
 (defn transform-outputs->>
   "Based on a series of value creation functions and a writer function, transform the given
