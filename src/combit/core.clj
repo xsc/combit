@@ -48,32 +48,6 @@
      (component ~inputs ~outputs
        ~@transformations)))
 
-;; ### Utilities
-
-(defn const
-  "Create constant that is accessible using selectors (like the input functions)."
-  [v]
-  (io/const-data v))
-
-(defn value
-  "If you want to pass a constant value to the input of a component or output
-   setter using `>>`, you have to wrap it using this function."
-  [v]
-  (vector v))
-
-(defmacro with-outputs
-  "Variant of `let` designed for components. The body may consist of a series
-   of transform functions."
-  [output-bindings & transformations]
-  `(let [~@(mapcat (fn [[sym input-form]]
-                     `[~sym (let [i# ~input-form
-                                  i# (if (fn? i#) (i#) i#)]
-                              (map const i#))])
-                   (partition 2 output-bindings))
-         transform# ~(vec transformations)]
-     (fn [o#]
-       (c/run-component-transformations o# transform#))))
-
 ;; ### Gates
 ;; 
 ;; Gates take single-element inputs and produce single-element outputs.
@@ -102,16 +76,43 @@
   "Create new primitive (a component with exactly one one-element output where every input 
    consists of exactly one element) using the given forms as a function body."
   [inputs & body]
-  (let [input-map (map vector inputs (repeatedly (partial gensym "input_")))]
-    `(gate ~(vec (map second input-map)) [o#]
-       (let [~@(mapcat (fn [[input sym]]
-                         `[~input (~sym)]) input-map)
-             ~@(mapcat (fn [[input sym]]
-                         `[~input (get-at ~input 0)]) input-map)
-             v# (do ~@body)]
-           (>> [v#] (o#))))))
+  `(->
+     (fn ~(vec (map (fn [i] `[~i]) inputs))
+         (vector [(do ~@body)]))
+     (wrap-component ~(count inputs))))
 
 (defmacro def-primitive
   "Define new primitive."
   [id inputs & body]
   `(def ~id (primitive ~inputs ~@body)))
+
+;; ## Utilities
+
+;; ### Value Utilities
+
+(defn const
+  "Create constant that is accessible using selectors (like the input functions)."
+  [v]
+  (io/const-data v))
+
+(defn value
+  "If you want to pass a constant value to the input of a component or output
+   setter using `>>`, you have to wrap it using this function."
+  [v]
+  (vector v))
+
+;; ### Binding Utilities
+
+(defmacro with-outputs
+  "Variant of `let` designed for components. The body may consist of a series
+   of transform functions."
+  [output-bindings & transformations]
+  `(let [~@(mapcat (fn [[sym input-form]]
+                     `[~sym (let [i# ~input-form
+                                  i# (if (fn? i#) (i#) i#)]
+                              (map const i#))])
+                   (partition 2 output-bindings))
+         transform# ~(vec transformations)]
+     (fn [o#]
+       (c/run-component-transformations o# transform#))))
+

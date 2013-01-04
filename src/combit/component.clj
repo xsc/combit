@@ -2,27 +2,10 @@
        :author "Yannick Scherer" }
   combit.component
   (:use [combit.utils :as u]
+        [combit.combination :as combine :only [sequential*]]
         [combit.input-output :as io :only [input-data output-data const-data]]))
 
-;; ## Concept
-;;
-;; A component is a function that takes a fixed number of inputs and produces another 
-;; __function__ without parameters that, when called, returns the final result, consisting
-;; of a seq with a fixed number of outputs.
-;; 
-;; If the component is called with less parameters than it has inputs, it will return
-;; an identical component where the given inputs are already set to the given values
-;; (see "Currying").
-;;
-;; This enables concatenation in a uniform way:
-;;
-;;     (conc a b)
-;;     ;; => (comp b a)
-;;     
-;;     (conc a b c)
-;;     ;; => (conc (conc a b) c)
-
-;; ### Currying
+;; ## Currying
 
 (defn curry
   "Create function that enables currying of a given function f with n parameters,
@@ -39,39 +22,16 @@
                        (concat args new-args)
                        (apply f))))))))
 
-;; ### Concatenation
-
-(defn conc
-  "Concatenate components, creating a new one. The elements of a component's
-   output collection will be passed to the next one." 
-  [& fs]
-  (if (= (count fs) 1)
-    (first fs)
-    (fn [& args]
-      (if-let [v (reduce 
-                   (fn [next-args f]
-                     (cond (not (fn? f)) f ;; the given value is used as direct output
-                           (not (coll? next-args))
-                             (u/throw-error "conc" 
-                                            "expected output collection, but got: " 
-                                            next-args)
-                           :else (apply f (or next-args []))))
-                   args
-                   (concat fs [vector]))]
-        (if-not (coll? v)
-          (u/throw-error "conc" "last component function has not returned collection, but: " v)
-          v)
-        (u/throw-error "conc" "last component function has not returned a value.")))))
-
-;; ### Output Transformation
+;; ## Output Transformation
 
 (defn- transform-outputs
   "Based on the value(s)/value function to write, a transformer function f and the current 
    state of the outputs, create new outputs."
   [current-outputs data f]
-  (let [data (if (fn? data) (data) data)]
+  (let [current-outputs (vec current-outputs)
+        data (if (fn? data) (data) data)]
     (cond (not (coll? data))
-            (u/throw-error "transform-outputs" "data to be written is no collection: " data)
+          (u/throw-error "transform-outputs" "data to be written is no collection: " data)
           (coll? f) (reduce 
                       (fn [o [f b]]
                         (f o [b]))
@@ -103,8 +63,13 @@
                    "expected at least one value/value function and the output setter."))
   (let [c (count args)
         setter (last args)
-        fs (take (dec c) args)]
-    (transform-outputs current-outputs (apply conc fs) setter)))
+        initial-value (first args)
+        components (take (- c 2) (rest args))
+        value-transformer (combine/sequential* components)]
+    (transform-outputs
+      (vec current-outputs)
+      (apply value-transformer initial-value)
+      setter)))
 
 ;; ## Components
 

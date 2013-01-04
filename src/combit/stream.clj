@@ -68,8 +68,10 @@
   "Create new stream component function, operating on blocks of the given sizes."
   [inputs outputs & transformations]
   (let [input-pairs (c/normalize-specs inputs)
-        input-sizes (vec (map (comp :width second) (:specs input-pairs)))]
-    `(let [c# (component ~(flatten inputs) ~outputs ~@transformations)]
+        input-specs (:specs input-pairs)
+        inputs (vec (flatten input-specs))
+        input-sizes (vec (map (comp :width second) input-specs))]
+    `(let [c# (component ~inputs ~outputs ~@transformations)]
        (wrap-stream-component c# ~input-sizes)))) 
 
 (defmacro def-stream-component

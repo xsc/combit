@@ -37,7 +37,7 @@
             (assoc! vc i v))
           vc
           (map vector
-               (map #(get-index c %) indices)
+               (map #(get-index c %) (seq indices))
                values))))))
 
 (defn remove-elements
