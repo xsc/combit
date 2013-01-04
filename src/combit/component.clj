@@ -39,48 +39,40 @@
                        (concat args new-args)
                        (apply f))))))))
 
-(defn curry-constantly
-  "Create function that enables currying for a given function f, forcing the final result
-   to be `(constantly (vector (f ...)))`. This is useful for concatenation (see `conc`)
-   where exactly such results are expected. The result of f will thus be interpreted as
-   the value of a single component output."
-  [f n]
-  (curry (comp constantly vector f) n))
-
 ;; ### Concatenation
 
 (defn conc
-  "Concatenate components, creating a new one. Since components produce functions without
-   parameters, such intermediate values will be evaluated when encountered. "
+  "Concatenate components, creating a new one. The elements of a component's
+   output collection will be passed to the next one." 
   [& fs]
   (if (= (count fs) 1)
-    (let [r (first fs)]
-      (if (fn? r) r (constantly (vector r))))
+    (first fs)
     (fn [& args]
       (if-let [v (reduce 
-                   (fn [r f]
-                     (let [next-args (if (fn? r) (r) [r])]
-                       (cond (not (fn? f))           f ;; the given value is used as a direct input
-                             (not next-args)         f ;; no arguments -> f must produce them
-                             (not (coll? next-args))
-                             (u/throw-error "conc" "expected output collection, but got: " next-args)
-                             :else (apply f next-args))))
-                   (constantly args)
+                   (fn [next-args f]
+                     (cond (not (fn? f)) f ;; the given value is used as direct output
+                           (not (coll? next-args))
+                             (u/throw-error "conc" 
+                                            "expected output collection, but got: " 
+                                            next-args)
+                           :else (apply f (or next-args []))))
+                   args
                    (concat fs [vector]))]
-        v
-        (u/throw-error "conc" "last transformer function has not returned a value.")))))
-
+        (if-not (coll? v)
+          (u/throw-error "conc" "last component function has not returned collection, but: " v)
+          v)
+        (u/throw-error "conc" "last component function has not returned a value.")))))
 
 ;; ### Output Transformation
 
 (defn- transform-outputs
   "Based on the value(s)/value function to write, a transformer function f and the current 
    state of the outputs, create new outputs."
-  [current-outputs v f]
-  (let [data (if (fn? v) (v) [v])]
-    (when-not (coll? data)
-      (u/throw-error "transform-outputs" "data to be written is no collection: " data))
-    (cond (coll? f) (reduce 
+  [current-outputs data f]
+  (let [data (if (fn? data) (data) data)]
+    (cond (not (coll? data))
+            (u/throw-error "transform-outputs" "data to be written is no collection: " data)
+          (coll? f) (reduce 
                       (fn [o [f b]]
                         (f o [b]))
                       current-outputs 
@@ -97,8 +89,8 @@
    outputs. Example:
 
      (transform-outputs->> [[:out1 :out2] [nil nil]] 
-       [:out3]                        
-       ;; -> non-function input will be converted to [[:out3]]
+       [[:out3]]
+       ;; -> will be passed as-is to the next \"component\"
        (juxt first first)
        ;; -> non-function input will be converted to [[:out3 :out3]]
        #(vector (first %1) %2)
@@ -167,7 +159,7 @@
   (mapcat
     (fn [x]
       (if (coll? x)
-        x
+        (normalize-transformations x)
         (vector x)))
      transformations))
 
@@ -244,5 +236,5 @@
                             initial-outputs#
                             ~(vec transformations))]
              (check-component-seq (seq outputs#) ~output-count)
-             (constantly outputs#)))
+             outputs#))
          (wrap-component ~input-count)))))

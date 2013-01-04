@@ -16,14 +16,13 @@
 (defn- concat-output-blocks
   "Concatenate a series of outputs to a single output."
   [output-blocks]
-  (let [output-blocks (map #(if (fn? %) (%) %) output-blocks)]
-    (reduce
-      (fn [out1 out2]
-        (map
-          (fn [block1 block2]
-            (data/concat-elements block1 block2))
-          out1 out2))
-      output-blocks)))
+  (reduce
+    (fn [out1 out2]
+      (map
+        (fn [block1 block2]
+          (data/concat-elements block1 block2))
+        out1 out2))
+    output-blocks))
 
 (defn- split-inputs
   "Create lazy seq of inputs consisting of data with the given element count.
@@ -55,7 +54,7 @@
       (let [input-blocks (split-inputs inputs block-sizes)
             output-blocks (map #(apply f %) input-blocks)
             outputs# (concat-output-blocks output-blocks)]
-        (constantly outputs#)))
+        outputs#))
     (c/wrap-component (count block-sizes))))
 
 (defn wrap-stream-gate
@@ -70,10 +69,10 @@
   [inputs outputs & transformations]
   (let [input-pairs (c/normalize-specs inputs)
         input-sizes (vec (map (comp :width second) (:specs input-pairs)))]
-    `(let [c# (component ~inputs ~outputs ~@transformations)]
+    `(let [c# (component ~(flatten inputs) ~outputs ~@transformations)]
        (wrap-stream-component c# ~input-sizes)))) 
 
-(defmacro def-stream
+(defmacro def-stream-component
   "Define new stream component."
   [id inputs outputs & transformations]
   `(def ~id (stream-component ~inputs ~outputs ~@transformations)))

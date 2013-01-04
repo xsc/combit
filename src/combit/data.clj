@@ -62,7 +62,7 @@
     (persistent!
       (reduce
         (fn [vc block]
-          (if-not (vector? data)
+          (if-not (vector? block)
             (u/throw-error "concat-elements", "expected vectors as input, given: " data)
             (let [c (count block)]
               (reduce (fn [vc i]

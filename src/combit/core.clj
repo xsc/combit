@@ -18,10 +18,21 @@
 ;; ### Combinator
 
 (defn >> 
-  "Combit Output Operation. (see `combit.input-output/transform-ouputs->>`)"
-  [& args]
+  "Based on the collection of outputs given as first parameter, call all subsequent 
+   components sequentially (passing one component's outputs as inputs to the next one)
+   until finally calling the output transformation function given as the last parameter.
+
+   This function returns a function with the current state of the outputs as its only
+   parameter."
+  [x & args]
   (fn [outputs]
-    (apply c/transform-outputs->> outputs args)))
+    (apply c/transform-outputs->> outputs x args)))
+
+(defn >>*
+  "See `>>`. Wraps the first given parameter into a vector."
+  [v & args]
+  (fn [outputs]
+    (apply c/transform-outputs->> outputs (vector v) args)))
 
 ;; ### Components
 
@@ -36,16 +47,6 @@
   `(def ~id 
      (component ~inputs ~outputs
        ~@transformations)))
-
-(defn run
-  "Run component on given inputs. Components return a function like
-   `(constantly <actual outputs>)` which is why it has to be evaluated once
-   more to retrieve the final result."
-  [c & args]
-  (when-let [cf (apply c args)]
-    (if (fn? cf)
-      (cf)
-      cf)))
 
 ;; ### Utilities
 
