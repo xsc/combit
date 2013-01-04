@@ -1,7 +1,7 @@
 (ns ^{ :doc "Input Getters, Output Setters, Constants, ..."
        :author "Yannick Scherer" }
   combit.input-output
-  (:use [combit.data :as data :only [get-elements set-elements]]
+  (:use [combit.data :as data]
         [combit.utils :as u]))
 
 ;; ## Helpers
@@ -18,11 +18,12 @@
   "Create function that, when supplied with an input selector specification (i.e. the indices
    of elements to extract from a sequence), produces the associated data."
   [data width]
-  (let [data (vec data)]
+  (let [data (vec (data/take-elements width data))]
     (fn x 
       ([] data)
       ([spec]
-       (cond (integer? spec) (data/get-at data spec)
+       (cond (and (integer? spec) (>= spec 0) (< spec width))
+             (vector (data/get-at data spec))
              (and (coll? spec) (every? #(and (>= % 0) (< % width)) spec))
              (data/get-elements data spec)
              :else (u/throw-error "input-data"
@@ -39,14 +40,18 @@
   [index width]
   (fn x
     ([] (fn [outputs [data & _]]
-          (assoc outputs index data)))
+          (let [data (if (> (data/element-count data) width)
+                       (data/take-elements width data)
+                       data)]
+            (assoc outputs index data))))
     ([spec]
      (fn [outputs [data & _]]
        (assoc outputs index
               (let [output (get outputs index)]
-                (cond (integer? spec) (->> 
-                                        (data/get-at data 0)
-                                        (data/set-at output spec))
+                (cond (and (integer? spec) (>= spec 0) (< spec width))
+                      (->> 
+                        (data/get-at data 0)
+                        (data/set-at output spec))
                       (and (coll? spec) (every? #(and (>= % 0) (< % width)) spec))
                       (data/set-elements output spec data)
                       :else (u/throw-error "output-data"

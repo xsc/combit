@@ -5,23 +5,6 @@
         [combit.combination :as combine :only [sequential*]]
         [combit.input-output :as io :only [input-data output-data const-data]]))
 
-;; ## Currying
-
-(defn curry
-  "Create function that enables currying of a given function f with n parameters,
-   always passing the given arguments first. If all parameters are given, the function
-   will be evaluated."
-  ([f n] (curry f n []))
-  ([f n args] (fn x 
-                ([] x)
-                ([& new-args]
-                 (let [c (count new-args)]
-                   (if (< c n)
-                     (curry f (- n c) (concat args new-args))
-                     (->>
-                       (concat args new-args)
-                       (apply f))))))))
-
 ;; ## Output Transformation
 
 (defn- transform-outputs
@@ -32,16 +15,16 @@
         data (if (fn? data) (data) data)]
     (cond (not (coll? data))
           (u/throw-error "transform-outputs" "data to be written is no collection: " data)
-          (coll? f) (reduce 
-                      (fn [o [f b]]
-                        (f o [b]))
-                      current-outputs 
-                      (map vector f data))
           (set? f) (reduce 
                      (fn [o f]
                        (f o data))
                      current-outputs
                      f)
+          (coll? f) (reduce 
+                      (fn [o [f b]]
+                        (f o [b]))
+                      current-outputs 
+                      (map vector f data))
           :else (f current-outputs data))))
 
 (defn transform-outputs->>
@@ -79,7 +62,7 @@
   "Wrap component function to exhibit the expected component behaviour."
   [c input-count]
   (-> c
-    (curry input-count)))
+    (u/curry input-count)))
 
 ;; ### Component Specification
 
@@ -158,11 +141,9 @@
 (defn check-component-seq
   "Check if the given parameter is a seq with the given element count."
   [s expected-count]
-  (when-not (or (nil? s) (seq? s))
-    (u/throw-error "check-component-seq" "expected sequence of data blocks, got: " s))
   (let [c (count s)]
     (when-not (= c expected-count)
-      (u/throw-error "check-component-seq" "expected " expected-count " data blocks, got " c))))
+      (u/throw-error "check-component-seq" "expected " expected-count " data block(s), got " c))))
 
 ;; ### Generation Macro
 ;;

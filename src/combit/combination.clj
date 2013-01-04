@@ -9,17 +9,21 @@
    Outputs from one component will be passed as inputs to the next one."
   [components]
   (if-not (seq components)
-    vector
-    (fn [& inputs]
-      (loop [inputs inputs
-             comps components]
-        (if-not (seq comps)
-          (vec inputs)
-          (let [[c & rest-comps] comps
-                next-inputs (apply c inputs)]
-            (if (fn? next-inputs) 
-              (sequential* (cons next-inputs rest-comps)) ;; sequential currying
-              (recur next-inputs rest-comps))))))))
+    (fn x
+      ([] x)
+      ([& inputs] (vec inputs)))
+    (fn x
+      ([] x)
+      ([& inputs]
+       (loop [inputs inputs
+              comps components]
+         (if-not (seq comps)
+           (vec inputs)
+           (let [[c & rest-comps] comps
+                 next-inputs (apply c inputs)]
+             (if (fn? next-inputs) 
+               (sequential* (cons next-inputs rest-comps)) ;; sequential currying
+               (recur next-inputs rest-comps)))))))))
 
 (defn sequential
   "See `sequential*`."
@@ -37,27 +41,29 @@
    The first seq is necessary to determine where inputs should be split. Both parameters
    can be infinite seqs, which is very useful in creating components with unlimited inputs."
   [input-counts components]
-  (fn [& inputs]
-    (loop [inputs inputs
-           counts input-counts
-           comps components
-           results []]
-      (if-not (and (seq inputs) (seq counts) (seq comps))
-        (vec results)
-        (let [ic (first counts)
-              rest-counts (rest counts)
-              c (first comps)
-              rest-comps  (rest comps)
-              next-inputs (take ic inputs)
-              nic (count next-inputs)]
-          (if (< nic ic)
-            (parallel* ;; parallel currying
-              (cons (- ic nic) rest-counts)
-              (cons #(concat results (apply c (concat next-inputs %&))) rest-comps))
-            (let [rest-inputs (drop ic inputs)
-                  next-result (apply c next-inputs)]
-              (recur rest-inputs rest-counts rest-comps
-                     (concat results next-result)))))))))
+  (fn x
+    ([] x)
+    ([& inputs]
+     (loop [inputs inputs
+            counts input-counts
+            comps components
+            results []]
+       (if-not (and (seq inputs) (seq counts) (seq comps))
+         (vec results)
+         (let [ic (first counts)
+               rest-counts (rest counts)
+               c (first comps)
+               rest-comps  (rest comps)
+               next-inputs (take ic inputs)
+               nic (count next-inputs)]
+           (if (< nic ic)
+             (parallel* ;; parallel currying
+               (cons (- ic nic) rest-counts)
+               (cons #(concat results (apply c (concat next-inputs %&))) rest-comps))
+             (let [rest-inputs (drop ic inputs)
+                   next-result (apply c next-inputs)]
+               (recur rest-inputs rest-counts rest-comps
+                      (concat results next-result))))))))))
 
 (defn parallel
   "See `parallel*`."

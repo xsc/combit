@@ -12,10 +12,12 @@
 (def ^:dynamic *index-transformation* #(identity %2))
 
 (defn get-index
+  "Calculate Index based on current *index-transformation*."
   [c i]
   (*index-transformation* c i))
 
 (defn get-elements
+  "Get the elements given by index."
   [data indices]
   (if-not (vector? data)
     (u/throw-error "get-elements" "expected vector as input; given: " data)
@@ -26,6 +28,7 @@
         vec))))
 
 (defn set-elements
+  "Set the elements given by index to the given values."
   [data indices values]
   (if-not (vector? data)
     (u/throw-error "set-elements" "expected vector as input, given: " data)
@@ -41,6 +44,7 @@
                values))))))
 
 (defn remove-elements
+  "Remove the elements given by index."
   [data indices]
   (if-not (vector? data)
     (u/throw-error "set-elements" "expected vector as input, given: " data)
@@ -57,6 +61,7 @@
           (map vector (range) data))))))
 
 (defn concat-elements
+  "Concatenate the given data blocks."
   [& data]
   (let [vc (transient [])]
     (persistent!
@@ -71,6 +76,10 @@
                       (map #(get-index c %) (range c))))))
         vc
         data))))
+
+(def element-count
+  "Get number of elements."
+  count)
 
 (defn set-at
   "Set the element at the given position to the given value."
