@@ -126,3 +126,29 @@
          0 1 0
          1 0 0
          1 1 1)))
+
+;; ## Primitives
+
+(def-primitive plus [a b]
+  (+ a b))
+
+(def-primitive mul [a b]
+  (* a b))
+
+(def-gate plus1-mul16 [in] [out]
+  (>>* (in)
+       (plus [1])
+       (mul [16])
+       (out)))
+
+(deftest primitive-tests
+  (testing "Primitive Components"
+    (for [x (take 10 (repeatedly #(rand-int 100)))
+          y (take 10 (repeatedly #(rand-int 100)))]
+      (is (= (plus [x] [y]) [(+ x y)])))
+    (for [x (take 10 (repeatedly #(rand-int 100)))
+          y (take 10 (repeatedly #(rand-int 100)))]
+      (is (= (mul [x] [y]) [(* x y)])))
+    (for [x (take 10 (repeatedly #(rand-int 100)))]
+      (is (= (plus1-mul16 [x]) [(* 16 (+ 1 x))])))))
+
