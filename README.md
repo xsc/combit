@@ -9,8 +9,10 @@ Combit tries to offer concise and intuitive ways to manipulate fixed-size contai
 __Leiningen:__
 
 ```clojure
-[combit "0.2.0"]
+[combit "0.3.0"]
 ```
+
+__Examples can be found [here](https://github.com/xsc/combit/tree/master/src/combit/examples).__
 
 ## Components
 
@@ -237,9 +239,10 @@ component, finally merging all the results into one seq of outputs:
 ;; => ([0 1 0 1])
 ```
 
-`wrap-stream-gate` just assumes that every input has the size 1. There are shorthands here: `def-stream`
-for defining stream components directly, `def-stream-gate` for gates and `def-stream-primitive` for
-primitives. So, finally, the shortest universally usable XOR component can be achieved with:
+`wrap-stream-gate` just assumes that every input has the size 1. There are shorthands here: 
+`def-stream-component` for defining stream components directly, `def-stream-gate` for gates and 
+`def-stream-primitive` for primitives. So, finally, the shortest universally usable XOR component 
+can be achieved with:
 
 ```clojure
 (def-stream-primitive xor [a b]
