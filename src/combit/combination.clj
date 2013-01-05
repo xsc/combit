@@ -149,3 +149,18 @@
                (fn [& previous-outputs]
                  (vec (keep-indexed #(when (keep-output? %1) %2) 
                                     previous-outputs))))))
+
+;; ## Iteration
+
+(defn iteration
+  "Create component that redirects the outputs of the given one to its own inputs
+   n times."
+  [c n]
+  (fn [& inputs]
+    (reduce
+      (fn [next-inputs _]
+        (apply c next-inputs))
+      inputs
+      (range n))))
+
+

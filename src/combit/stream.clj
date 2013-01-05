@@ -91,18 +91,22 @@
   [id inputs outputs & transformations]
   `(def ~id (stream-gate ~inputs ~outputs ~@transformations)))
 
+(defn run-stream-primitive
+  [f inputs]
+  (vector
+    (->> inputs
+      (map data/data-seq)
+      (map vec)
+      (apply map f)
+      vec)))
+
 (defmacro stream-primitive
   "Create new stream primitive (inputs of size n, exactly one output of size n)."
   [inputs & body]
   `(->
      (let [f# (fn ~inputs ~@body)]
        (fn [& in#]
-         (vector
-           (->> in#
-             (map data/data-seq)
-             (map vec)
-             (apply map f#)
-             vec))))
+         (run-stream-primitive f# in#)))
      (c/wrap-component ~(count inputs))))
 
 (defmacro def-stream-primitive

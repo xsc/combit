@@ -18,7 +18,9 @@
   "Create function that, when supplied with an input selector specification (i.e. the indices
    of elements to extract from a sequence), produces the associated data."
   [data width]
-  (let [data (data/take-elements width data)]
+  (let [data (if (> (data/element-count data) width)
+               (data/take-elements width data)
+               data)]
     (fn x 
       ([] data)
       ([spec]
