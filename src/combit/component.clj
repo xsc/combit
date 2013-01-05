@@ -2,6 +2,7 @@
        :author "Yannick Scherer" }
   combit.component
   (:use [combit.utils :as u]
+        [combit.data :as data]
         [combit.combination :as combine :only [sequential*]]
         [combit.input-output :as io :only [input-data output-data const-data]]))
 
@@ -66,11 +67,35 @@
 
 ;; ### Component Specification
 
-(defn normalize-io-spec
-  [spec]
-  (cond (and (integer? spec) (pos? spec)) (-> {} (assoc :width spec))
-        (and (map? spec) (contains? spec :width)) spec
-        :else (u/throw-error "component" "Unknown Input/Output specification: " spec)))
+(def ^:private normalize-io-spec
+  "Normalize a single input/output specification, one of:
+   - `n`: an integer defining the output width (initial value will be a nil-initialized
+   vector of n elements);
+   - `{ :width n :initial-element x }`: initial value will be a x-initialized vector of n
+   elements;
+   - `{ :initial X }` or `X`: if `X` implements `combit.data/CombitData`, both the initial width
+   and value will be set to X's properties.
+  "
+  (letfn [(normalize-literal-spec [l]
+            (-> {}
+              (assoc :width `(data/element-count ~l))
+              (assoc :initial l)))
+          (normalize-map-spec [{:keys[width initial initial-element] :as m}]
+            (if (and (not initial) (integer? width) (pos? width))
+              (-> {}
+                (assoc :width width)
+                (assoc :initial `(u/new-vector ~width ~initial-element)))
+              (normalize-literal-spec initial)))
+          (normalize-int-spec [i]
+            (if (pos? i)
+              (-> {}
+                (assoc :width i)
+                (assoc :initial `(u/new-vector ~i)))
+              (u/throw-error "component" "width has to be positive, given: " i)))]
+    (fn [spec]
+      (cond (map? spec) (normalize-map-spec spec)
+            (integer? spec) (normalize-int-spec spec)
+            :else (normalize-literal-spec spec)))))
 
 (defn normalize-specs
   "Convert a seq of `[symbol block-spec symbol block-spec ...]` or a map of 
@@ -91,9 +116,10 @@
         (assoc :specs
           (let [s (normalize-io-spec spec)]
             (for [n (range c)] `[~(gensym) ~s])))))
-    (let [pairs (partition 2 specs)]
+    (let [[syms {:keys[as]}] (split-with (complement #{:as}) specs)
+          pairs (partition 2 syms)]
       (-> {}
-        (assoc :as nil)
+        (assoc :as as)
         (assoc :specs
                (map (fn [[sym spec]] 
                       [sym (normalize-io-spec spec)])
@@ -114,13 +140,8 @@
 (defn create-component-initial-outputs
   "Create intial output vector for `component` macro,"
   [pairs]
-  (vec
-    (map 
-      (fn [[sym spec]]
-        (cond (contains? spec :initial) (:initial spec)
-              (contains? spec :width) `(u/new-vector ~(:width spec))
-              :else (u/throw-error "component" "malformed output spec: " spec)))
-      pairs)))
+  `(let [is# ~(vec (map second pairs))]
+     (vec (map :initial is#))))
 
 ;; ### Run Helpers
 

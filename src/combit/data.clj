@@ -4,52 +4,68 @@
   (:use [combit.utils :as u]))
 
 ;; ## CombitData
-;;
-;; Combit Data Blocks are vectors, which might be accessed using different strategies.
-;; (first element is 0, last element is 0, ...). Vectors offer the best manipulation
-;; characteristics which is why they will be used.
 
-(def ^:dynamic *index-transformation* #(identity %2))
+(defprotocol CombitData
+  "Protocol for Combit Data Containers."
+  (element-count [this]
+    "Get number of elements in data object.")
+  (get-at [this index]
+    "Get element at the given index.")
+  (get-elements [this indices]
+    "Create object representing the data at the given indices and in the given
+     order.")
+  (set-at [this index value]
+    "Set element at the given index to the given value.")
+  (set-elements [this indices values]
+    "Create object representing the alterations to a data object specified by the 
+     given indices and new element values.")
+  (remove-elements [this indices]
+    "Create object representing the removal of the elements at the given indices.")
+  (concat-elements [this values]
+    "Create object representing the concatenation of a data object and a seq of
+     element values.")
+  (data-seq [this]
+    "Get seq of data elements."))
 
-(defn get-index
-  "Calculate Index based on current *index-transformation*."
-  [c i]
-  (*index-transformation* c i))
+(defn remove-at
+  "Remove the element at the given position."
+  [data index]
+  (remove-elements data [index]))
 
-(defn get-elements
-  "Get the elements given by index."
-  [data indices]
-  (if-not (vector? data)
-    (u/throw-error "get-elements" "expected vector as input; given: " data)
-    (let [c (count data)]
-      (->>
-        (map #(get-index c %) indices)
-        (map #(get data %))
-        vec))))
+(defn take-elements
+  "Create new data consisting of the elements with indices 0 to n-1."
+  [n data]
+  (get-elements data (range n)))
 
-(defn set-elements
-  "Set the elements given by index to the given values."
-  [data indices values]
-  (if-not (vector? data)
-    (u/throw-error "set-elements" "expected vector as input, given: " data)
-    (let [c (count data)
-          vc (transient data)]
+(defn drop-elements
+  "Create new data consisting of the elements with indices n to N."
+  [n data]
+  (remove-elements data (range n)))
+
+;; ## Vector Implementation of CombitData
+
+(extend-type clojure.lang.IPersistentVector 
+  CombitData
+  (element-count [this]
+    (count this))
+  (get-at [this index]
+    (get this index))
+  (get-elements [this indices]
+    (vec (map #(get this %) indices)))
+  (set-at [this index value]
+    (assoc this index value))
+  (set-elements [this indices values]
+    (let [c (count this)
+          vc (transient this)]
       (persistent!
         (reduce
           (fn [vc [i v]]
             (assoc! vc i v))
           vc
-          (map vector
-               (map #(get-index c %) (seq indices))
-               values))))))
-
-(defn remove-elements
-  "Remove the elements given by index."
-  [data indices]
-  (if-not (vector? data)
-    (u/throw-error "set-elements" "expected vector as input, given: " data)
-    (let [c (count data)
-          remove-element? (set (map #(get-index c %) indices))
+          (map-indexed #(vector %2 (get-at values %1)) indices)))))
+  (remove-elements [this indices]
+    (let [c (count this)
+          remove-element? (set indices)
           vc (transient [])]
       (persistent!
         (reduce
@@ -58,59 +74,43 @@
               vc
               (conj! vc e)))
           vc
-          (map vector (range) data))))))
+          (map vector (range) this)))))
+  (concat-elements [this values]
+    (if-not (coll? values)
+      (u/throw-error "concat-elements", "expected collection to append, given: " values)
+      (let [vc (transient this)]
+        (persistent! (reduce conj! vc values)))))
+  (data-seq [this]
+    (seq this)))
 
-(defn concat-elements
-  "Concatenate the given data blocks."
-  [& data]
-  (let [vc (transient [])]
-    (persistent!
-      (reduce
-        (fn [vc block]
-          (if-not (vector? block)
-            (u/throw-error "concat-elements", "expected vectors as input, given: " data)
-            (let [c (count block)]
-              (reduce (fn [vc i]
-                        (conj! vc (get block i)))
-                      vc
-                      (map #(get-index c %) (range c))))))
-        vc
-        data))))
+;; ## Seq Implementation of CombitData
 
-(def element-count
-  "Get number of elements."
-  count)
+(extend-type clojure.lang.ISeq 
+  CombitData
+  (element-count [this]
+    (count this))
+  (get-at [this index]
+    (nth this index))
+  (get-elements [this indices]
+    (map #(nth this %) indices))
+  (set-at [this index value]
+    (concat
+      (take (dec index) this)
+      [value]
+      (drop (inc index) this)))
+  (set-elements [this indices values]
+    (reduce 
+      (fn [sq [i v]]
+        (set-at (vec sq) i v))
+      this
+      (map-indexed #(vector %2 (get-at values %1)) indices)))
+  (remove-elements [this indices]
+    (let [remove-element? (set indices)]
+      (keep-indexed #(when-not (remove-element? %) %) this)))
+  (concat-elements [this values]
+    (if-not (coll? values)
+      (u/throw-error "concat-elements", "expected collection to append, given: " values)
+      (concat this values)))
+  (data-seq [this]
+    this))
 
-(defn data-seq
-  "Create seq with the data elements."
-  [data]
-  (seq data))
-
-(defn set-at
-  "Set the element at the given position to the given value."
-  [data index value]
-  (if-not (vector? data)
-    (u/throw-error "set-at", "expected vector as input, given: " data)
-    (assoc data index value)))
-
-(defn get-at
-  "Get the element at the given position."
-  [data index]
-  (if-not (vector? data)
-    (u/throw-error "get-at", "expected vector as input, given: " data)
-    (get data index)))
-
-(defn remove-at
-  "Remove the element at the given position."
-  [data index]
-  (remove-elements (vec data) [index]))
-
-(defn take-elements
-  "Create new data consisting of the elements with indices 0 to n-1."
-  [n data]
-  (get-elements (vec data) (range n)))
-
-(defn drop-elements
-  "Create new data consisting of the elements with indices n to N."
-  [n data]
-  (remove-elements (vec data) (range n)))

@@ -18,12 +18,12 @@
   "Create function that, when supplied with an input selector specification (i.e. the indices
    of elements to extract from a sequence), produces the associated data."
   [data width]
-  (let [data (vec (data/take-elements width data))]
+  (let [data (data/take-elements width data)]
     (fn x 
       ([] data)
       ([spec]
        (cond (and (integer? spec) (>= spec 0) (< spec width))
-             (vector (data/get-at data spec))
+             (data/get-elements data [spec])
              (and (coll? spec) (every? #(and (>= % 0) (< % width)) spec))
              (data/get-elements data spec)
              :else (u/throw-error "input-data"

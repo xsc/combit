@@ -20,7 +20,7 @@
     (fn [out1 out2]
       (map
         (fn [block1 block2]
-          (data/concat-elements block1 block2))
+          (data/concat-elements block1 (data-seq block2)))
         out1 out2))
     output-blocks))
 
