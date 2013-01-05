@@ -6,29 +6,33 @@
 
 ;; ## NAND Universal Gate
 
-(def-primitive nand-gate [a b]
+(def-primitive nand-prim [a b]
   (if (= (+ a b) 2) 0 1))
 
 ;; ## Derived Gates
 ;; see: http://en.wikipedia.org/wiki/NAND_logic
 
-(def ^:dynamic *nand* nand-gate)
+(def ^:dynamic *nand* nand-prim)
+
+(defn nand-gate 
+  [& inputs]
+  (apply *nand* inputs))
 
 (def-gate not-gate [a] [out]
   (>> [(a) (a)] 
-      (*nand*) 
+      (nand-gate) 
       (out)))
 
 (def-gate and-gate [a b] [out]
   (>> [(a) (b)] 
-      (*nand*) 
+      (nand-gate) 
       (not-gate) 
       (out)))
 
 (def-gate or-gate [a b] [out]
   (>> [(a) (b)]
       (combine/parallel-1 (not-gate) (not-gate))
-      (*nand*)
+      (nand-gate)
       (out)))
        
 (def-gate nor-gate [a b] [out]
@@ -40,10 +44,10 @@
 (def-gate xor-gate [a b] [out]
   (>> [(a) (b)]
       (combine/parallel-1
-        (combine/prepend-inputs (*nand* (b)))
-        (combine/prepend-inputs (*nand* (a))))
-      (combine/parallel-2 (*nand*) (*nand*))
-      (*nand*)
+        (combine/prepend-inputs (nand-gate (b)))
+        (combine/prepend-inputs (nand-gate (a))))
+      (combine/parallel-2 (nand-gate) (nand-gate))
+      (nand-gate)
       (out)))
 
 (def-gate xnor-gate [a b] [out]
