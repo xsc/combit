@@ -81,6 +81,11 @@
   "Get number of elements."
   count)
 
+(defn data-seq
+  "Create seq with the data elements."
+  [data]
+  (seq data))
+
 (defn set-at
   "Set the element at the given position to the given value."
   [data index value]
