@@ -116,7 +116,7 @@ translates to
 where `>>` expects a seq of values as first parameter, passing it to the inputs of the subsequent function
 or output.
 
-### Complex Combinations 
+### Calling other Components
 
 So far, the examples only demonstrated how to connect _all_ the outputs of a component to _all_ the 
 inputs of another one. However, sometimes it is necessary to be able to use outputs of multiple
@@ -172,6 +172,68 @@ say this, the component is really slow (about 20 times slower!) compared to the 
 But let's just remember this as an entry point for optimization later on: Are function calls really
 that expensive (despite the whole "HotSpot can do this!" propaganda) or are the component input/output
 checking routines responsible, at least in part?
+
+### Parallelization/Selection
+
+The namespace `combit.combinations` offers means to flexibly combine components in pre-defined ways.
+For example, a number of components can be _parallelized_, meaning that the resulting component takes all
+the original components' inputs and produces all the original components' outputs:
+
+```clojure
+(def-component drop2 [in 4] [out 2]
+  (>>* (in 2 3) (out)))
+
+(def-component take2 [in 4] [out 2]
+  (>>* (in 0 1) (out)))
+
+(def drop2-take2 (parallel-1 drop2 take2))
+
+(drop2-take2 [1 2 3 4] [5 6 7 8])
+;; => ([3 4] [5 6])
+```
+
+`parallel-1` can be used with any number of single-input components. There are explicit variants for 
+double-input (`parallel-2`) and triple-input (`parallel-3`) ones, as well as the generic form `parallel-n`
+whose first parameter is a seq of the different numbers of inputs to be expected.
+
+Additionally, it is possible to select/reorder and drop certain outputs using `select-outputs` or 
+`drop-outputs`:
+
+```clojure
+(def-component lower-half [in 4] [out 2]
+  (>>* (in) 
+       (split-halves)
+       (select-outputs [1])
+       (out)))
+
+(def-component upper-half [in 4] [out 2]
+  (>>* (in)
+       (split-halves)
+       (drop-outputs [1])
+       (out)))
+
+(def-component swap-halves [in 4] [a 2 b 2 c 2]
+  (>>* (in)
+       (split-halves)
+       (select-outputs [1 0 1]) ;; you can reorder outputs, as well as duplicate them
+       [(a) (b) (c)]))
+```
+
+The above `xor-opposite-halves` could be rewritten using parallelization and selection:
+
+```clojure
+(def-component xor-opposite-halves [a 4 b 4] [out 4]
+  (>> [(a) (b)]          ;; --> [(a) (b)]
+      (parallel-1 
+        (split-halves) 
+        (split-halves))  ;; --> [(a 0 1) (a 2 3) (b 0 1) (b 2 3)]
+      (select-outputs
+        [0 3 1 2])       ;; --> [(a 0 1) (b 2 3) (a 2 3) (b 0 1)]
+      (parallel-2
+        (xor)
+        (xor))           ;; --> [(xor (a 0 1) (b 2 3)) (xor (a 2 3) (b 0 1))]
+      [(out 0 1) (out 2 3)]))
+```
 
 ### Primitives: the basic building blocks
 
